@@ -19,9 +19,6 @@
  * DEALINGS IN THE SOFTWARE.
 */
 
-
-/* a test client for zmq-journal-gatewayd */
-
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
@@ -33,6 +30,19 @@ static zctx_t *ctx;
 static void *client;
 uint64_t initial_time;
 int log_counter = 0;
+
+/* cli arguments */
+int reverse=0, at_most=-1, follow=0;
+char *since_timestamp=NULL, *until_timestamp=NULL, *client_socket_address=NULL, *format=NULL;
+
+char *build_query_string(){
+    json_t *query = json_object();
+    if (reverse == 1) json_object_set(query, "reverse", json_true());
+    if (at_most >= 0) json_object_set(query, "at_most", json_integer(at_most));
+    if (follow == 1) json_object_set(query, "follow", json_true());
+    if (format != NULL) json_object_set(query, "format", json_string(format));
+    return json_dumps(query, JSON_ENCODE_ANY);
+}
 
 /* for measuring performance of the gateway */
 void benchmark(uint64_t initial_time, int log_counter) {
@@ -113,17 +123,64 @@ int response_handler(zmsg_t *response){
 
 int main ( int argc, char *argv[] ){
 
+    struct option longopts[] = {
+        { "reverse",    no_argument,            &reverse,     1   },
+        { "at_most",    required_argument,      NULL,         'a' },
+        { "since",      required_argument,      NULL,         'b' },
+        { "until",      required_argument,      NULL,         'c' },
+        { "follow",     no_argument,            &follow,      1   },
+        { "format",     required_argument,      NULL,         'f' },
+        { "socket",     required_argument,      NULL,         's' },
+        { 0, 0, 0, 0 }
+    };
+
+    int c;
+    while((c = getopt_long(argc, argv, "s:a:b:c:f:", longopts, NULL)) != -1) {
+        switch (c) {
+            case 'a':
+                at_most = atoi(optarg);
+                break;
+            case 'b':
+                since_timestamp = optarg;
+                break;
+            case 'c':
+                until_timestamp = optarg;
+                break;
+            case 's':
+                client_socket_address = optarg;
+                break;
+            case 'f':
+                format = optarg;
+                break;
+            case 0:     /* getopt_long() set a variable, just keep going */
+                break;
+            case ':':   /* missing option argument */
+                fprintf(stderr, "%s: option `-%c' requires an argument\n",
+                        argv[0], optarg);
+                break;
+            default:    /* invalid option */
+                break;
+        }
+    } 
+
+    char *query_string = build_query_string();
+
     /* initial setup */
     ctx = zctx_new ();
     client = zsocket_new (ctx, ZMQ_DEALER);
     zsocket_set_rcvhwm (client, CLIENT_HWM);
-    zsocket_connect (client, CLIENT_SOCKET);
+
+    if(client_socket_address != NULL){
+        printf("!!!\n");
+        zsocket_connect (client, client_socket_address);
+    }
+    else
+        zsocket_connect (client, DEFAULT_CLIENT_SOCKET);
 
     /* for stopping the client and the gateway handler via keystroke (ctrl-c) */
     signal(SIGINT, stop_handler);
 
     /* send query */
-    char *query_string = argv[1] != NULL ? argv[1] : QUERY_STRING;
     zstr_send (client, query_string);
 
     zmq_pollitem_t items [] = {

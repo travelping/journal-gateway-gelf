@@ -70,7 +70,6 @@
 #include <stdint.h>
 
 #include "zmq-journal-gatewayd.h"
-#include "jansson.h"
 
 /* signal handler function, can be used to interrupt the gateway via keystroke */
 static bool active = true;
@@ -551,7 +550,31 @@ static void *handler_routine (void *_args) {
     return NULL;
 }
 
-int main (void){
+int main (int argc, char *argv[]){
+
+    struct option longopts[] = {
+        { "socket",     required_argument,      NULL,         's' },
+        { 0, 0, 0, 0 }
+    };
+
+    char *gateway_socket_address = NULL;
+
+    int c;
+    while((c = getopt_long(argc, argv, "s:", longopts, NULL)) != -1) {
+        switch (c) {
+            case 's':
+                gateway_socket_address = optarg;
+                break;
+            case 0:     /* getopt_long() set a variable, just keep going */
+                break;
+            case ':':   /* missing option argument */
+                fprintf(stderr, "%s: option `-%c' requires an argument\n",
+                        argv[0], optarg);
+                break;
+            default:    /* invalid option */
+                break;
+        }
+    } 
 
     sd_journal_print(LOG_INFO, "gateway started...");
 
@@ -562,7 +585,11 @@ int main (void){
     assert(frontend);
     zsocket_set_sndhwm (frontend, GATEWAY_HWM);
     zsocket_set_rcvhwm (frontend, GATEWAY_HWM);
-    zsocket_bind (frontend, FRONTEND_SOCKET);
+
+    if(gateway_socket_address != NULL)
+        zsocket_bind (frontend, gateway_socket_address);
+    else
+        zsocket_bind (frontend, DEFAULT_FRONTEND_SOCKET);
 
     // Socket to talk to the query handlers
     void *backend = zsocket_new (ctx, ZMQ_ROUTER);

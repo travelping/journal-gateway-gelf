@@ -1,9 +1,11 @@
 #include "czmq.h"
 #include "zmq.h"
+#include "jansson.h"
+#include <getopt.h>
 
 /** general options, fit them to your needs  **/
 
-#define FRONTEND_SOCKET "tcp://*:5555"          // used by the clients
+#define DEFAULT_FRONTEND_SOCKET "tcp://*:5555"          // used by the clients
 #define BACKEND_SOCKET "ipc://backend"          // used by the query handlers
 #define HANDLER_HEARTBEAT_INTERVAL 5*1000       // millisecs, defines the time interval in which the gateway will expect a heartbeat
 #define GATEWAY_HWM 0                           // high water mark for the gateway
@@ -25,7 +27,7 @@
 
 #define QUERY_STRING "{}"                       // default query string, every communication begins with sending a query string
 #define HEARTBEATING 0                          // set to '1' if 'follow' is true 
-#define CLIENT_SOCKET "tcp://localhost:5555"    // the socket the client should connect to
+#define DEFAULT_CLIENT_SOCKET "tcp://localhost:5555"    // the socket the client should connect to
 #define HEARTBEAT_INTERVAL 1000                 // msecs, this states after which time you send a heartbeat
 #define SERVER_HEARTBEAT_INTERVAL 5000          // msecs, this states how much time you give the server to answer a heartbeat
 #define CLIENT_HWM 0                            // high water mark for the clients
