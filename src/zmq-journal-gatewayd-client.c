@@ -32,8 +32,23 @@ uint64_t initial_time;
 int log_counter = 0;
 
 /* cli arguments */
-int reverse=0, at_most=-1, follow=0;
-char *since_timestamp=NULL, *until_timestamp=NULL, *client_socket_address=NULL, *format=NULL;
+int     reverse=0, at_most=-1, follow=0;
+char    *since_timestamp=NULL, *until_timestamp=NULL, *client_socket_address=NULL, *format=NULL,
+        *since_cursor=NULL, *until_cursor=NULL;
+
+char* make_json_timestamp(char *timestamp){
+    if (timestamp == NULL)
+        return NULL;
+    char *json_timestamp = (char *) malloc(sizeof(char) * 20);
+    json_timestamp[0] = '\0'; 
+    char *ptr = strtok(timestamp, " ");
+    strcat(json_timestamp, timestamp);
+    strcat(json_timestamp, "T");
+    ptr = strtok(NULL, " ");
+    strcat(json_timestamp+11, timestamp+11);
+    strcat(json_timestamp, "Z");
+    return json_timestamp;
+}
 
 char *build_query_string(){
     json_t *query = json_object();
@@ -41,6 +56,18 @@ char *build_query_string(){
     if (at_most >= 0) json_object_set(query, "at_most", json_integer(at_most));
     if (follow == 1) json_object_set(query, "follow", json_true());
     if (format != NULL) json_object_set(query, "format", json_string(format));
+    char* json_since = make_json_timestamp(since_timestamp);
+    if (json_since != NULL) {
+        json_object_set(query, "since_timestamp", json_string(json_since));
+        free(json_since);
+    }
+    char* json_until = make_json_timestamp(until_timestamp);
+    if (json_until != NULL) { 
+        json_object_set(query, "until_timestamp", json_string(json_until));
+        free(json_until);
+    }
+    if (since_cursor != NULL) json_object_set(query, "since_cursor", json_string(since_cursor));
+    if (until_cursor != NULL) json_object_set(query, "until_cursor", json_string(until_cursor));
     return json_dumps(query, JSON_ENCODE_ANY);
 }
 
@@ -124,13 +151,15 @@ int response_handler(zmsg_t *response){
 int main ( int argc, char *argv[] ){
 
     struct option longopts[] = {
-        { "reverse",    no_argument,            &reverse,     1   },
-        { "at_most",    required_argument,      NULL,         'a' },
-        { "since",      required_argument,      NULL,         'b' },
-        { "until",      required_argument,      NULL,         'c' },
-        { "follow",     no_argument,            &follow,      1   },
-        { "format",     required_argument,      NULL,         'f' },
-        { "socket",     required_argument,      NULL,         's' },
+        { "reverse",        no_argument,            &reverse,     1   },
+        { "at_most",        required_argument,      NULL,         'a' },
+        { "since",          required_argument,      NULL,         'b' },
+        { "until",          required_argument,      NULL,         'c' },
+        { "since_cursor",   required_argument,      NULL,         'd' },
+        { "until_cursor",   required_argument,      NULL,         'e' },
+        { "follow",         no_argument,            &follow,      1   },
+        { "format",         required_argument,      NULL,         'f' },
+        { "socket",         required_argument,      NULL,         's' },
         { 0, 0, 0, 0 }
     };
 
@@ -145,6 +174,12 @@ int main ( int argc, char *argv[] ){
                 break;
             case 'c':
                 until_timestamp = optarg;
+                break;
+            case 'd':
+                since_cursor = optarg;
+                break;
+            case 'e':
+                until_cursor = optarg;
                 break;
             case 's':
                 client_socket_address = optarg;
