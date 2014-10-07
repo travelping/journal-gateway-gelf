@@ -348,7 +348,9 @@ char *get_entry_string(sd_journal *j, RequestMeta *args, char** entry_string, si
     /* check against args if this entry should be sent */
     if (check_args( j, args, realtime_usec, monotonic_usec) == 1){
         free(cursor);
-        return END;
+        *entry_string = END;
+        *entry_string_size = strlen(END);
+        return;
     }
 
     /* until now the prefixes for the meta information are missing */
