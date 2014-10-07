@@ -1,0 +1,3 @@
+*.o
+zmq-journal-gatewayd
+zmq-journal-gatewayd-client
