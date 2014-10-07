@@ -2,13 +2,14 @@ BASE_DIR = $(shell cd .. && pwd -P)
 SRC_DIR = $(BASE_DIR)/src
 MISC_DIR = $(BASE_DIR)/misc
 SYSTEMD_VERSION = $(shell systemctl --version | grep systemd | cut -d " " -f 2)
-SYSTEMD_TEST = $(shell [ $(SYSTEMD_VERSION) -lt 212 ] && echo true)
+SYSTEMD_TEST = $(shell [ $(SYSTEMD_VERSION) -lt 209 ] && echo true)
 
 CC = gcc
 CFLAGS = -c -O2 #-Wall -Wextra  
 LDFLAGS = -L/usr/local/lib -lzmq -lczmq -ljansson 
 SYSTEMD_FLAGS = -lsystemd-id128
 
+# libsystemd-journal got merged into libsystemd with version 209
 ifeq ($(SYSTEMD_TEST), true)
 	SYSTEMD_FLAGS += -lsystemd-journal
 else
