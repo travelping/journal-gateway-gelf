@@ -3,6 +3,8 @@ SRC_DIR = $(BASE_DIR)/src
 MISC_DIR = $(BASE_DIR)/misc
 SYSTEMD_VERSION = $(shell systemctl --version | grep systemd | cut -d " " -f 2)
 SYSTEMD_TEST = $(shell [ $(SYSTEMD_VERSION) -lt 209 ] && echo true)
+DESTDIR = /usr/share/zmq-journal-gatewayd
+SERVICE_DIR = /etc/systemd/system
 
 CC = gcc
 CFLAGS = -c -O2 #-Wall -Wextra  
@@ -16,7 +18,11 @@ else
 	SYSTEMD_FLAGS += -lsystemd
 endif
 
+# gateway and client can be build and installed separately
 all: zmq-journal-gatewayd zmq-journal-gatewayd-client
+
+install: install_gateway install_client
+
 
 gateway: zmq-journal-gatewayd
 
@@ -33,6 +39,14 @@ zmq-journal-gatewayd-client: zmq-journal-gatewayd-client.o
 
 zmq-journal-gatewayd-client.o: $(SRC_DIR)/zmq-journal-gatewayd-client.c
 	$(CC) $(CFLAGS) $(SRC_DIR)/zmq-journal-gatewayd-client.c -o zmq-journal-gatewayd-client.o
+
+install_gateway:
+	mkdir -p $(DESTDIR); cp zmq-journal-gatewayd $(DESTDIR)/
+	cp $(MISC_DIR)/zmq-journal-gatewayd.service $(SERVICE_DIR)/
+
+install_client:
+	mkdir -p $(DESTDIR); cp zmq-journal-gatewayd-client $(DESTDIR)/
+	cp $(MISC_DIR)/zmq-journal-gatewayd.service $(SERVICE_DIR)/
 
 clean:
 	rm *.o zmq-journal-gatewayd zmq-journal-gatewayd-client

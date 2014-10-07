@@ -2,7 +2,7 @@
 Description=A ZeroMQ logging gateway for Journald.
 
 [Service]
-ExecStart=/home/sascha/git/zmq-journal-gatewayd/zmq-journal-gatewayd
+ExecStart=/usr/share/zmq-journal-gatewayd/zmq-journal-gatewayd
 ExecStop=/bin/kill -s sigint $MAINPID
 Restart=on-failure
 
