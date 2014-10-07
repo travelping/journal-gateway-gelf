@@ -1,5 +1,5 @@
 {
-    "project_id" : "xray",
+    "project_id" : "zmq-journal-gatewayd",
     "conduit_uri" : "https://review.tpip.net/"
 }
 

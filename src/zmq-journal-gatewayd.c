@@ -243,7 +243,7 @@ RequestMeta *parse_json(zmsg_t* query_msg){
     if ( args->until_cursor != NULL || (int) args->until_timestamp != -1 )
         args->follow = false;
     if ( args->follow == true )
-        args->reverse = true;
+        args->reverse = false;
 
     json_decref(json_args);
     return args;
@@ -283,17 +283,17 @@ void send_flag( zframe_t *ID, void *socket, zctx_t *ctx, char *flag){
 
 void adjust_journal(RequestMeta *args, sd_journal *j){
     /* initial position will be seeked, don't forget to 'next'  or 'previous' the journal pointer */
-    if ( args->reverse == false && args->until_cursor != NULL)
+    if ( args->reverse == true && args->until_cursor != NULL)
         sd_journal_seek_cursor( j, args->until_cursor );
-    else if ( args->reverse == true && args->since_cursor != NULL)
+    else if ( args->reverse == false && args->since_cursor != NULL)
         sd_journal_seek_cursor( j, args->since_cursor );
-    else if( args->reverse == false && (int) args->until_timestamp != -1)
+    else if( args->reverse == true && (int) args->until_timestamp != -1)
         sd_journal_seek_realtime_usec( j, args->until_timestamp );
-    else if ( args->reverse == true && (int) args->since_timestamp != -1)
+    else if ( args->reverse == false && (int) args->since_timestamp != -1)
         sd_journal_seek_realtime_usec( j, args->since_timestamp );
-    else if (args->reverse == false)
-        sd_journal_seek_tail( j );
     else if (args->reverse == true)
+        sd_journal_seek_tail( j );
+    else if (args->reverse == false)
         sd_journal_seek_head( j );
 
     /* field matches conditions */
@@ -309,10 +309,10 @@ void adjust_journal(RequestMeta *args, sd_journal *j){
 }
 
 int check_args(sd_journal *j, RequestMeta *args, uint64_t realtime_usec, uint64_t monotonic_usec){
-    if( ( args->reverse == false && args->since_cursor != NULL && sd_journal_test_cursor ( j, args->since_cursor ) )
-        || ( args->reverse == true && args->until_cursor != NULL && sd_journal_test_cursor ( j, args->until_cursor ) )
-        || ( args->reverse == false && (int) args->since_timestamp != -1 && args->since_timestamp > realtime_usec )
-        || ( args->reverse == true && (int) args->until_timestamp != -1 && args->until_timestamp < realtime_usec ) )
+    if( ( args->reverse == true && args->since_cursor != NULL && sd_journal_test_cursor ( j, args->since_cursor ) )
+        || ( args->reverse == false && args->until_cursor != NULL && sd_journal_test_cursor ( j, args->until_cursor ) )
+        || ( args->reverse == true && (int) args->since_timestamp != -1 && args->since_timestamp > realtime_usec )
+        || ( args->reverse == false && (int) args->until_timestamp != -1 && args->until_timestamp < realtime_usec ) )
         return 1;
     else
         return 0;
@@ -496,9 +496,9 @@ static void *handler_routine (void *_args) {
 
         /* move forwards or backwards? default is backwards */
         if( args->reverse == false )
-            rc = sd_journal_previous(j);
-        else
             rc = sd_journal_next(j);
+        else
+            rc = sd_journal_previous(j);
 
         /* try to send new entry if there is one */
         if( rc == 1 ){

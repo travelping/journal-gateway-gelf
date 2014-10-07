@@ -170,10 +170,8 @@ int main ( int argc, char *argv[] ){
     client = zsocket_new (ctx, ZMQ_DEALER);
     zsocket_set_rcvhwm (client, CLIENT_HWM);
 
-    if(client_socket_address != NULL){
-        printf("!!!\n");
+    if(client_socket_address != NULL)
         zsocket_connect (client, client_socket_address);
-    }
     else
         zsocket_connect (client, DEFAULT_CLIENT_SOCKET);
 
