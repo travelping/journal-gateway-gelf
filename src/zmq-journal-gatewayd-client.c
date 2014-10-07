@@ -30,6 +30,7 @@ static zctx_t *ctx;
 static void *client;
 uint64_t initial_time;
 int log_counter = 0;
+int heartbeating = HEARTBEATING; 
 
 /* cli arguments */
 int     reverse=0, at_most=-1, follow=0;
@@ -157,8 +158,8 @@ int main ( int argc, char *argv[] ){
         { "until",          required_argument,      NULL,         'c' },
         { "since_cursor",   required_argument,      NULL,         'd' },
         { "until_cursor",   required_argument,      NULL,         'e' },
-        { "follow",         no_argument,            &follow,      1   },
         { "format",         required_argument,      NULL,         'f' },
+        { "follow",         no_argument,            NULL,         'g' },
         { "socket",         required_argument,      NULL,         's' },
         { 0, 0, 0, 0 }
     };
@@ -186,6 +187,10 @@ int main ( int argc, char *argv[] ){
                 break;
             case 'f':
                 format = optarg;
+                break;
+            case 'g':
+                follow = 1;
+                heartbeating = 1;
                 break;
             case 0:     /* getopt_long() set a variable, just keep going */
                 break;
@@ -232,7 +237,7 @@ int main ( int argc, char *argv[] ){
     while (active) {
 
         rc = zmq_poll (items, 1, HEARTBEAT_INTERVAL * ZMQ_POLL_MSEC);
-        if( rc == 0 && HEARTBEATING ){
+        if( rc == 0 && heartbeating ){
             /* no message from server so far => send heartbeat */
             zstr_send (client, HEARTBEAT);
             heartbeat_at = zclock_time () + HEARTBEAT_INTERVAL;
@@ -260,7 +265,7 @@ int main ( int argc, char *argv[] ){
         }
 
         /* the server also expects heartbeats while he is sending messages */
-        if (zclock_time () >= heartbeat_at && HEARTBEATING) {
+        if (zclock_time () >= heartbeat_at && heartbeating) {
             zstr_send (client, HEARTBEAT);
             heartbeat_at = zclock_time () + HEARTBEAT_INTERVAL;
         }
