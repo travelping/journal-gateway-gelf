@@ -3,9 +3,8 @@
 #include "jansson.h"
 #include <getopt.h>
 
-/** general options, fit them to your needs  **/
-
-#define DEFAULT_FRONTEND_SOCKET "tcp://*:5555"          // used by the clients
+/* general options, fit them to your needs */
+#define DEFAULT_FRONTEND_SOCKET "tcp://*:5555"  // used by the clients
 #define BACKEND_SOCKET "ipc://backend"          // used by the query handlers
 #define HANDLER_HEARTBEAT_INTERVAL 5*1000       // millisecs, defines the time interval in which the gateway will expect a heartbeat
 #define GATEWAY_HWM 0                           // high water mark for the gateway
@@ -14,29 +13,21 @@
                                                 // must be at least HANDLER_HEARTBEAT_INTERVAL since the gateway is not able 
                                                 // to answer heartbeats in time when not.
 
-
-/** definitions for internal communication between gateway and client **/
-
+/* definitions for internal communication between gateway and client */
 #define READY "\001"
 #define END "\002"
 #define HEARTBEAT "\003"
 #define ERROR "\004"
 #define TIMEOUT "\005"
 #define STOP "\006"
-#define IGNORE "\007"
 
-#define QUERY_STRING "{}"                       // default query string, every communication begins with sending a query string
-#define HEARTBEATING 0                          // set to '1' if 'follow' is true 
+#define HEARTBEATING 0                          // set to '1' if should always be active
 #define DEFAULT_CLIENT_SOCKET "tcp://localhost:5555"    // the socket the client should connect to
 #define HEARTBEAT_INTERVAL 1000                 // msecs, this states after which time you send a heartbeat
 #define SERVER_HEARTBEAT_INTERVAL 5000          // msecs, this states how much time you give the server to answer a heartbeat
 #define CLIENT_HWM 0                            // high water mark for the clients
 
-/** from systemd's journal-native.h **/
-#define ENTRY_SIZE_MAX (1024*1024*770u)
-#define DATA_SIZE_MAX (1024*1024*768u)
-
-/** DEBUGGING, defines the time the gateway is waiting after sending one log **/
+/* DEBUGGING, defines the time the gateway is waiting after sending one log */
 #define SLEEP 0 // 1500000L //  500000000L
 
 typedef struct RequestMeta {
@@ -56,7 +47,7 @@ typedef struct RequestMeta {
     bool unique_entries;
     char *field;
 
-    void **clauses;     // array of clauses
+    void **clauses;         // array of clauses
     size_t n_clauses;
 
     bool reverse; 

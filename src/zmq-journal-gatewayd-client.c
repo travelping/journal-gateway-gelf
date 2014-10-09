@@ -128,21 +128,16 @@ int response_handler(zmsg_t *response){
         more = zframe_more (frame);
         frame_data = zframe_data(frame);
         if( memcmp( frame_data, END, strlen(END) ) == 0 ){
-            //printf("<< got all logs >>\n");
             zframe_destroy (&frame);
             return 1;
         }
         else if( memcmp( frame_data, ERROR, strlen(ERROR) ) == 0 ){
-            //printf("<< an error occoured - invalid json query string? >>\n");
             zframe_destroy (&frame);
             return -1;
         }
         else if( memcmp( frame_data, HEARTBEAT, strlen(HEARTBEAT) ) == 0 ) NULL;
-        //    printf("<< HEARTBEAT >>\n");
         else if( memcmp( frame_data, TIMEOUT, strlen(TIMEOUT) ) == 0 ) NULL;
-        //    printf("<< server got no heartbeat >>\n");
         else if( memcmp( frame_data, READY, strlen(READY) ) == 0 ) NULL;
-        //    printf("<< gateway accepted query >>\n\n");
         else{
             write(1, "\n", 1);
             write(1, frame_data, frame_size);
@@ -308,6 +303,6 @@ The client is used to connect to zmq-journal-gatewayd via the '--socket' option.
     /* clear everything up */
     zsocket_destroy (ctx, client);
     zctx_destroy (&ctx);
-    benchmark(initial_time, log_counter);
+    //benchmark(initial_time, log_counter);
     return 0;
 }
