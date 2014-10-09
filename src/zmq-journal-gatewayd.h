@@ -42,9 +42,6 @@ typedef struct RequestMeta {
     bool follow;
     bool discrete;
     bool boot;
-    int boot_ID;
-    bool machine;
-    bool unique_entries;
     char *field;
 
     void **clauses;         // array of clauses
