@@ -35,7 +35,7 @@ int heartbeating = HEARTBEATING;
 /* cli arguments */
 int     reverse=0, at_most=-1, follow=0;
 char    *since_timestamp=NULL, *until_timestamp=NULL, *client_socket_address=NULL, *format=NULL,
-        *since_cursor=NULL, *until_cursor=NULL;
+        *since_cursor=NULL, *until_cursor=NULL, *filter=NULL;
 
 char* make_json_timestamp(char *timestamp){
     if (timestamp == NULL)
@@ -69,6 +69,10 @@ char *build_query_string(){
     }
     if (since_cursor != NULL) json_object_set(query, "since_cursor", json_string(since_cursor));
     if (until_cursor != NULL) json_object_set(query, "until_cursor", json_string(until_cursor));
+    if (filter != NULL){ 
+        json_t *json_fiter = json_loads(filter, JSON_REJECT_DUPLICATES, NULL);
+        json_object_set(query, "field_matches", json_fiter);
+    }
     return json_dumps(query, JSON_ENCODE_ANY);
 }
 
@@ -161,6 +165,7 @@ int main ( int argc, char *argv[] ){
         { "format",         required_argument,      NULL,         'f' },
         { "follow",         no_argument,            NULL,         'g' },
         { "help",           no_argument,            NULL,         'h' },
+        { "filter",         required_argument,      NULL,         'i' },
         { "socket",         required_argument,      NULL,         's' },
         { 0, 0, 0, 0 }
     };
@@ -193,12 +198,15 @@ int main ( int argc, char *argv[] ){
                 follow = 1;
                 heartbeating = 1;
                 break;
+            case 'i':
+                filter = optarg;
+                break;
             case 'h':
                 fprintf(stdout, 
 "zmq-journal-gatewayd-client -- receiving logs from zmq-journal-gatewayd over the network\n\n\
 Usage: zmq-journal-gatewayd-client [--help] [--socket] [--since] [--until]\n\
-                                   [--since_cursor] [until_cursor] [--at_most]\n\
-                                   [--format] [--follow] [--reverse]\n\n\
+                                   [--since_cursor] [--until_cursor] [--at_most]\n\
+                                   [--format] [--follow] [--reverse] [--filter]\n\n\
 \t--help \t\twill show this\n\
 \t--socket \trequires a socket (must be usable by ZeroMQ) to connect to zmq-journal-gatewayd;\n\
 \t\t\tdefault is \"tcp://localhost:5555\"\n\
@@ -209,7 +217,9 @@ Usage: zmq-journal-gatewayd-client [--help] [--socket] [--since] [--until]\n\
 \t--at_most \trequires a positive integer N, at most N logs will be sent\n\
 \t--format \trequires a format \"export\" or \"plain\", default is \"export\"\n\
 \t--follow \tlike 'journalctl -f', follows the remote journal\n\
-\t--reverse \treverses the log stream such that newer logs will be sent first\n\n\
+\t--reverse \treverses the log stream such that newer logs will be sent first\n\
+\t--filter \trequires an array of the form e.g. \"[[\\\"FILTER_1\\\", \\\"FILTER_2\\\"], [\\\"FILTER_3\\\"]]\";\n\
+\t\t\tthis example reprensents the boolean formula \"(FILTER_1 OR FILTER_2) AND (FILTER_3)\"\n\n\
 The client is used to connect to zmq-journal-gatewayd via the '--socket' option.\n"
                 );
                 return;
