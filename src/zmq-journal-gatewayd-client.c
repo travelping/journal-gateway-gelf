@@ -40,7 +40,7 @@ char    *since_timestamp=NULL, *until_timestamp=NULL, *client_socket_address=NUL
 char* make_json_timestamp(char *timestamp){
     if (timestamp == NULL)
         return NULL;
-    char *json_timestamp = (char *) malloc(sizeof(char) * 20);
+    char *json_timestamp = (char *) malloc(sizeof(char) * 21);
     json_timestamp[0] = '\0'; 
     char *ptr = strtok(timestamp, " ");
     strcat(json_timestamp, timestamp);
@@ -53,27 +53,29 @@ char* make_json_timestamp(char *timestamp){
 
 char *build_query_string(){
     json_t *query = json_object();
-    if (reverse == 1) json_object_set(query, "reverse", json_true());
-    if (at_most >= 0) json_object_set(query, "at_most", json_integer(at_most));
-    if (follow == 1) json_object_set(query, "follow", json_true());
-    if (format != NULL) json_object_set(query, "format", json_string(format));
+    if (reverse == 1) json_object_set_new(query, "reverse", json_true());
+    if (at_most >= 0) json_object_set_new(query, "at_most", json_integer(at_most));
+    if (follow == 1) json_object_set_new(query, "follow", json_true());
+    if (format != NULL) json_object_set_new(query, "format", json_string(format));
     char* json_since = make_json_timestamp(since_timestamp);
     if (json_since != NULL) {
-        json_object_set(query, "since_timestamp", json_string(json_since));
+        json_object_set_new(query, "since_timestamp", json_string(json_since));
         free(json_since);
     }
     char* json_until = make_json_timestamp(until_timestamp);
     if (json_until != NULL) { 
-        json_object_set(query, "until_timestamp", json_string(json_until));
+        json_object_set_new(query, "until_timestamp", json_string(json_until));
         free(json_until);
     }
-    if (since_cursor != NULL) json_object_set(query, "since_cursor", json_string(since_cursor));
-    if (until_cursor != NULL) json_object_set(query, "until_cursor", json_string(until_cursor));
+    if (since_cursor != NULL) json_object_set_new(query, "since_cursor", json_string(since_cursor));
+    if (until_cursor != NULL) json_object_set_new(query, "until_cursor", json_string(until_cursor));
     if (filter != NULL){ 
         json_t *json_fiter = json_loads(filter, JSON_REJECT_DUPLICATES, NULL);
-        json_object_set(query, "field_matches", json_fiter);
+        json_object_set_new(query, "field_matches", json_fiter);
     }
-    return json_dumps(query, JSON_ENCODE_ANY);
+    char* query_string = json_dumps(query, JSON_ENCODE_ANY);
+    json_decref(query);
+    return query_string;
 }
 
 /* for measuring performance of the gateway */
@@ -81,7 +83,7 @@ void benchmark(uint64_t initial_time, int log_counter) {
     uint64_t current_time = zclock_time ();
     uint64_t time_diff_sec = (current_time - initial_time)/1000;
     uint64_t log_rate_sec = log_counter / time_diff_sec;
-    //printf("<< sent %d logs in %d seconds ( %d logs/sec ) >>\n", log_counter, time_diff_sec, log_rate_sec);
+    printf("<< sent %d logs in %d seconds ( %d logs/sec ) >>\n", log_counter, time_diff_sec, log_rate_sec);
 }
 
 static bool active = true;
@@ -91,7 +93,6 @@ void stop_handler(int dummy) {
         { client, 0, ZMQ_POLLIN, 0 },
     };
 
-    //printf("\n<< sending STOP ... >>\n");
     zstr_send (client, STOP);
     char *frame_string = NULL;
     do {
@@ -107,8 +108,8 @@ void stop_handler(int dummy) {
     if (frame_string != NULL) 
         free(frame_string);
 
-    benchmark(initial_time, log_counter);
-    //printf("<< STOPPED >>\n");
+    /* can be used for benchmarking the client */
+    //benchmark(initial_time, log_counter);
 
     /* stop the client */
     active = false;
@@ -250,6 +251,7 @@ The client is used to connect to zmq-journal-gatewayd via the '--socket' option.
 
     /* send query */
     zstr_send (client, query_string);
+    free(query_string);
 
     zmq_pollitem_t items [] = {
         { client, 0, ZMQ_POLLIN, 0 },
@@ -307,6 +309,5 @@ The client is used to connect to zmq-journal-gatewayd via the '--socket' option.
     zsocket_destroy (ctx, client);
     zctx_destroy (&ctx);
     benchmark(initial_time, log_counter);
-    //printf("<< EXIT >>\n");
     return 0;
 }
