@@ -440,7 +440,6 @@ static void *handler_routine (void *_args) {
     int rc = zsocket_connect (query_handler, BACKEND_SOCKET);
 
     /* send READY to the client */
-    //printf("<< query accepted >>\n");
     send_flag( args->client_ID, query_handler, NULL, READY );
 
     zmq_pollitem_t items [] = {
@@ -556,6 +555,7 @@ int main (int argc, char *argv[]){
 
     struct option longopts[] = {
         { "socket",     required_argument,      NULL,         's' },
+        { "help",       no_argument,            NULL,         'h' },
         { 0, 0, 0, 0 }
     };
 
@@ -567,14 +567,22 @@ int main (int argc, char *argv[]){
             case 's':
                 gateway_socket_address = optarg;
                 break;
+            case 'h':
+                fprintf(stdout, 
+"zmq-journal-gatewayd -- sending logs from systemd's journal over the network\n\
+Usage: zmq-journal-gatewayd [--help] [--socket]\n\n\
+\t--help \t\twill show this\n\
+\t--socket \trequires a socket (must be usable by ZeroMQ), default is \"tcp://*:5555\"\n\n\
+The zmq-journal-gatewayd-client can connect to the given socket.\n"
+                );
+                return;
             case 0:     /* getopt_long() set a variable, just keep going */
                 break;
             case ':':   /* missing option argument */
-                fprintf(stderr, "%s: option `-%c' requires an argument\n",
-                        argv[0], optarg);
-                break;
+                fprintf(stderr, "%s: option `-%c' requires an argument\n", argv[0], optarg);
+                return;
             default:    /* invalid option */
-                break;
+                return;
         }
     } 
 
@@ -676,7 +684,6 @@ int main (int argc, char *argv[]){
                     || strcmp( handler_response_string, STOP ) == 0 
                     || strcmp( handler_response_string, TIMEOUT ) == 0){
                 zhash_delete (connections, client_ID_string);
-                //printf("<< query closed >>\n");
             }
 
             free(handler_response_string);

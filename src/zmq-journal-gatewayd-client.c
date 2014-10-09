@@ -160,12 +160,13 @@ int main ( int argc, char *argv[] ){
         { "until_cursor",   required_argument,      NULL,         'e' },
         { "format",         required_argument,      NULL,         'f' },
         { "follow",         no_argument,            NULL,         'g' },
+        { "help",           no_argument,            NULL,         'h' },
         { "socket",         required_argument,      NULL,         's' },
         { 0, 0, 0, 0 }
     };
 
     int c;
-    while((c = getopt_long(argc, argv, "s:a:b:c:f:", longopts, NULL)) != -1) {
+    while((c = getopt_long(argc, argv, "a:b:c:d:e:f:ghs:", longopts, NULL)) != -1) {
         switch (c) {
             case 'a':
                 at_most = atoi(optarg);
@@ -192,14 +193,33 @@ int main ( int argc, char *argv[] ){
                 follow = 1;
                 heartbeating = 1;
                 break;
+            case 'h':
+                fprintf(stdout, 
+"zmq-journal-gatewayd-client -- receiving logs from zmq-journal-gatewayd over the network\n\n\
+Usage: zmq-journal-gatewayd-client [--help] [--socket] [--since] [--until]\n\
+                                   [--since_cursor] [until_cursor] [--at_most]\n\
+                                   [--format] [--follow] [--reverse]\n\n\
+\t--help \t\twill show this\n\
+\t--socket \trequires a socket (must be usable by ZeroMQ) to connect to zmq-journal-gatewayd;\n\
+\t\t\tdefault is \"tcp://localhost:5555\"\n\
+\t--since \trequires a timestamp with a format like \"2014-10-01 18:00:00\"\n\
+\t--until \tsee --since\n\
+\t--since_cursor \trequires a log cursor, see e.g. 'journalctl -o export'\n\
+\t--until_cursor \tsee --since_cursor\n\
+\t--at_most \trequires a positive integer N, at most N logs will be sent\n\
+\t--format \trequires a format \"export\" or \"plain\", default is \"export\"\n\
+\t--follow \tlike 'journalctl -f', follows the remote journal\n\
+\t--reverse \treverses the log stream such that newer logs will be sent first\n\n\
+The client is used to connect to zmq-journal-gatewayd via the '--socket' option.\n"
+                );
+                return;
             case 0:     /* getopt_long() set a variable, just keep going */
                 break;
             case ':':   /* missing option argument */
-                fprintf(stderr, "%s: option `-%c' requires an argument\n",
-                        argv[0], optarg);
-                break;
+                fprintf(stderr, "%s: option `-%c' requires an argument\n", argv[0], optarg);
+                return;
             default:    /* invalid option */
-                break;
+                return;
         }
     } 
 
