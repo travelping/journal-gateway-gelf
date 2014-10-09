@@ -227,14 +227,11 @@ RequestMeta *parse_json(zmsg_t* query_msg){
     args->at_most = get_arg_int(json_args, "at_most");
     args->since_timestamp = get_arg_date(json_args, "since_timestamp");
     args->until_timestamp = get_arg_date(json_args, "until_timestamp");
-    args->boot_ID = get_arg_int(json_args, "boot_ID");
     args->since_cursor = get_arg_string(json_args, "since_cursor");
     args->until_cursor = get_arg_string(json_args, "until_cursor");
     args->follow = get_arg_bool(json_args, "follow");
     args->discrete = get_arg_bool(json_args, "discrete");
     args->boot = get_arg_bool(json_args, "boot");
-    args->machine = get_arg_bool(json_args, "machine");
-    args->unique_entries = get_arg_bool(json_args, "unique_entries");
     args->field = get_arg_string(json_args, "field");
     set_matches(json_args, "field_matches", args); 
     args->reverse = get_arg_bool(json_args, "reverse");
