@@ -1,14 +1,15 @@
 zmq-journal-gatewayd
 ====================
 
-A ZeroMQ gateway for sending logs from systemd's journald over the network and a client (CLI tool).
+A ZeroMQ gateway for sending logs from systemd's journald over the network and a client (both CLI tools).
 
 Logs are available in plain test or an 'export' format suitable for storing them back (with journal-remote) into some systemd journal like
 
 ```bash
-zmq-journal-gatewayd-client --socket "tcp://192.168.122.1:5555" | systemd-journal-remote -o /path/to/some/dir/ -
+zmq-journal-gatewayd-client | systemd-journal-remote -o /path/to/some/dir/ -
 ```
 
+Use --help for an overview of all commands.
 
 Installation
 ------------
