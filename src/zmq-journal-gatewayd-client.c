@@ -1,4 +1,4 @@
-/*
+ /*
  * Copyright (c) 2013-2014 by Travelping GmbH <info@travelping.com>
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -214,8 +214,10 @@ Usage: zmq-journal-gatewayd-client [--help] [--socket] [--since] [--until]\n\
 \t--format \trequires a format \"export\" or \"plain\", default is \"export\"\n\
 \t--follow \tlike 'journalctl -f', follows the remote journal\n\
 \t--reverse \treverses the log stream such that newer logs will be sent first\n\
-\t--filter \trequires an array of the form e.g. \"[[\\\"FILTER_1\\\", \\\"FILTER_2\\\"], [\\\"FILTER_3\\\"]]\";\n\
-\t\t\tthis example reprensents the boolean formula \"(FILTER_1 OR FILTER_2) AND (FILTER_3)\"\n\n\
+\t--filter \trequires input of the form e.g. \"[[\\\"FILTER_1\\\", \\\"FILTER_2\\\"], [\\\"FILTER_3\\\"]]\"\n\
+\t\t\tthis example reprensents the boolean formula \"(FILTER_1 OR FILTER_2) AND (FILTER_3)\"\n\
+\t\t\twhereas the content of FILTER_N is matched against the contents of the logs;\n\
+\t\t\tExample: --filter [[\\\"PRIORITY=3\\\"]] only shows logs with exactly priority 3 \n\n\
 The client is used to connect to zmq-journal-gatewayd via the '--socket' option.\n"
                 );
                 return;
