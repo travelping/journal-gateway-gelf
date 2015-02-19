@@ -3,7 +3,7 @@ zmq-journal-gatewayd
 
 A ZeroMQ gateway for sending logs from systemd's journald over the network and a client (both CLI tools).
 
-Logs are available in plain test or an 'export' format suitable for storing them back (with journal-remote) into some systemd journal like
+Logs are available in plain text or an 'export' format suitable for storing them back (with journal-remote) into some systemd journal like
 
 ```bash
 zmq-journal-gatewayd-client | systemd-journal-remote -o /path/to/some/dir/ -
@@ -14,24 +14,31 @@ Use --help for an overview of all commands.
 Installation
 ------------
 
-You will need ZeroMQ >=3, czmq (ZeroMQ C bindings), jansson and the systemd-headers (for the gateway only). The gateway and the client can be build seperately (thus you dont need systemd for the client). Using Fedora you can do:
+You will need [ZeroMQ](http://zeromq.org/intro:get-the-software) (recomended version: 3.2.5, you'll need >= 3), [czmq](https://github.com/zeromq/czmq#toc3-71)  (ZeroMQ C bindings), jansson and the systemd-headers (for the gateway only). The gateway and the client can be build seperately (thus you dont need systemd for the client). Using Fedora you can do:
 
 ```bash
-yum install czmq jansson jansson-devel systemd-devel
+yum install jansson jansson-devel systemd-devel
 ```
 
-Then just execute:
+for jansson and systemd. To install ZMQ and CZMQ follow the instructions on  the linked sites.
+
+
+Then just execute (in the zmq-journal-gatewayd directory):
 
 ```bash
 cd build
 
-make all        # you can also just build the gateway or the client 
-                # with 'make gateway' or 'make client' 
+make all	        # you can also just build the gateway or the client 
+                	# with 'make gateway' or 'make client' 
 
-make install    # puts the binaries to /usr/share/zmq-journal-gatewayd; 
-                # 'make install_gateway' or 'make install_client' is also
-                # possible
+sudo make install	# puts the binaries to /usr/bin; 
+               		# 'make install_gateway' or 'make install_client' is also
+                	# possible
+sudo ldconfig
 ```
+
+Usage
+-----
 
 Installing the gateway will also install a service file to execute the gateway as a systemd unit:
 
@@ -39,5 +46,11 @@ Installing the gateway will also install a service file to execute the gateway a
 systemctl start zmq-journal-gatewayd    # binds by default on "tcp://*:5555"
 ```
 
-If you need other sockets you can write a configuration file for the service.
+If you need other sockets you can write a configuration file for the service:
+The service looks for a configuration file named "zmq_gateway.conf" in the directory "/home/tpiadmin/conf". You can change the socket there (this only has an effect, if you execute the gateway as a systemd unit).
 
+
+You can start the client via:
+```bash
+zmq-journal-gatewayd-client [options]
+```

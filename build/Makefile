@@ -3,7 +3,7 @@ SRC_DIR = $(BASE_DIR)/src
 MISC_DIR = $(BASE_DIR)/misc
 SYSTEMD_VERSION = $(shell systemctl --version | grep systemd | cut -d " " -f 2)
 SYSTEMD_TEST = $(shell [ $(SYSTEMD_VERSION) -lt 209 ] && echo true)
-DESTDIR = /usr/share/zmq-journal-gatewayd
+DESTDIR = /usr/bin
 SERVICE_DIR = /etc/systemd/system
 
 CC = gcc
