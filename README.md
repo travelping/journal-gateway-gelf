@@ -8,8 +8,51 @@ Logs are available in plain text or an 'export' format suitable for storing them
 ```bash
 zmq-journal-gatewayd-client | systemd-journal-remote -o /path/to/some/dir/ -
 ```
+Mind the - at the end.
+If you want to use the gateway as a relay you need to store the received logs into the local journal directory:
+```bash
+zmq-journal-gatewayd-client | systemd-journal-remote -o /var/log/journal/[machine-id]
+```
 
 Use --help for an overview of all commands.
+
+Mode of Operation
+-----------------
+
+      +----------------+
+      |    journald    |
+      |                |
+      |                |+------------+
+      |                |             |
+      |                |             |syslog
+      +----------------+             |live forwarding
+      +-----+ |                      |udp:514
+      |file | |                      |udp:broadcast
+      +-----+ | journal_api          |
+              |                      |
+              v                      v
+      +----------------+ syslog  +------------+
+      |   "gateway"    |-------->| SYSLOG     |
+      |                |         +------------+
+      |    acts as     |
+      |    journal     | GELF    +------------+
+      |    client      |-------->| GRAYLOG2   |
+      |                |         +------------+
+      |                |                                         +--------------+
+      |                | HTTP    +---------------------------+   |   journald   |
+      |                |-------->| HTTP |     journald-remote|-->|              |
+      |                |         +---------------------------+   |              |
+      |                |                                         |              |
+      |                | ZMTP    +------+    +---------------+   |              |
+      |                |-------->| ZMTP |--->|journald-remote|-->|              |
+      |                |         +------+    +---------------+   |              |
+      |                |                                         |              |
+      |                |                                         |              |
+      +----------------+                                         +--------------+
+                                                                 +-----+  +-----+
+                                                                 |file |  |file |
+                                                                 +-----+  +-----+
+
 
 Installation
 ------------
@@ -47,7 +90,7 @@ systemctl start zmq-journal-gatewayd    # binds by default on "tcp://*:5555"
 ```
 
 If you need other sockets you can write a configuration file for the service:
-The service looks for a configuration file named "zmq_gateway.conf" in the directory "/home/tpiadmin/conf". You can change the socket there (this only has an effect, if you execute the gateway as a systemd unit).
+The service looks for a configuration file named "zmq_gateway.conf" in the directory "~/conf". You can change the socket there (this only has an effect, if you execute the gateway as a systemd unit).
 
 
 You can start the client via:

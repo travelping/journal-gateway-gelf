@@ -22,40 +22,41 @@
 /*
  * 'zmq-journal-gatewayd' is a logging gateway for systemd's journald. It 
  * extracts logs from the journal according to given conditions and sends them
- * to a client which requested the logs via a json-object. This object is sent
+ * to a sink which requested the logs via a json-object. This object is sent
  * as a string. As transport ZeroMQ is used. Since the gateway works straight 
  * forward with ZeroMQ sockets you can in general choose how to communicate
- * between gateway and client in the way you can choose this for ZeroMQ sockets.
+ * between source and sink in the way you can choose this for ZeroMQ sockets.
  *
  * A typical query string can look like
  *
  *  " { \"since_timestamp\" : \"2014-04-29T13:23:25Z\" , \"reverse\" : true } "
  *
- * The gateway would then send all logs since the given date until now. Logs are 
+ * The source would then send all logs since the given date until now. Logs are 
  * by default send by newest first, unless you activate the 'reverse' attribute.
  *
  * The gateway can work on (in theory) arbitrary many requests in parallel. The
- * message flow with a client follows the following specification:
+ * message flow with a sink follows the following specification:
  *
- * 1.   The client sends a query string which represents a (valid) json object.
- * 2.   the gateway sends a message ('READY') to acknowledge  the query as a first 
+ * 0.   The source sends a message ('LOGON') to establish the connection.
+ * 1.   The sink sends a query string which represents a (valid) json object.
+ * 2.   the source sends a message ('READY') to acknowledge the query as a first 
  *      response. 
- * 3.   After this initial response the gateway will start sending logs according
+ * 3.   After this initial response the source will start sending logs according
  *      to the given restrictions/conditions. Every log is sent in exactly one 
  *      zmq message. Possible restrictions/conditions can be seen in the 
  *      function definition of 'parse_json'.
- * 4.   If the query response was successful the gateway will close the request
+ * 4.   If the query response was successful the source will close the request
  *      with an additional message ('END').
- *      If the query response was not (fully) successful the gateway will send 
+ *      If the query response was not (fully) successful the source will send 
  *      an error message ('ERROR').
  *      Another possibility regards a timeout due to heartbeating:
- * 5.   The gateway will always accept heartbeating messages ('HEARTBEAT') from
- *      a client but in general it is optional. Only if the follow functionality
- *      is used the gateway will expect a heartbeating by the client. If the 
- *      client misses a heartbeat the gateway will respond with a 'TIMEOUT'
+ * 5.   The source will always accept heartbeating messages ('HEARTBEAT') from
+ *      a sink but in general it is optional. Only if the follow functionality
+ *      is used the source will expect a heartbeating by the sink. If the 
+ *      sink misses a heartbeat the source will respond with a 'TIMEOUT'
  *      message and close the response stream. 
- * 6.   The client can stop the response stream of the gateway by sending a 'STOP' 
- *      message to the gateway. The gateway will respond with a 'STOP' message 
+ * 6.   The sink can stop the response stream of the source by sending a 'STOP' 
+ *      message to the source. The source will respond with a 'STOP' message 
  *      and close the response stream.
  */
 
@@ -101,7 +102,7 @@ void set_matches(json_t *json_args, char *key, RequestMeta *args){
     if( json_array != NULL ){
 
         /*  
-            The gateway accepets matches in form of boolean formulas.
+            The source accepts matches in form of boolean formulas.
             These formulas are represented in KNF such that every clause
             is represented as one array. The whole boolean formula is
             represented as an array of clauses/arrays. For example
