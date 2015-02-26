@@ -13,6 +13,10 @@
                                                 // must be at least HANDLER_HEARTBEAT_INTERVAL since the gateway is not able 
                                                 // to answer heartbeats in time when not.
 
+
+#define TARGET_ADDRESS_ENV "TARGET_ADDR"
+#define REMOTE_JOURNAL_DIRECTORY "JOURNAL_DIR"
+
 /* definitions for internal communication between gateway and client */
 #define READY "\001"
 #define END "\002"
@@ -20,9 +24,10 @@
 #define ERROR "\004"
 #define TIMEOUT "\005"
 #define STOP "\006"
+#define LOGON "\007"
 
 #define HEARTBEATING 0                          // set to '1' if should always be active
-#define DEFAULT_CLIENT_SOCKET "tcp://localhost:5555"    // the socket the client should connect to
+// #define DEFAULT_CLIENT_SOCKET "tcp://localhost:5555"    // the socket the client should connect to
 #define HEARTBEAT_INTERVAL 1000                 // msecs, this states after which time you send a heartbeat
 #define SERVER_HEARTBEAT_INTERVAL 5000          // msecs, this states how much time you give the server to answer a heartbeat
 #define CLIENT_HWM 0                            // high water mark for the clients
@@ -40,6 +45,7 @@ typedef struct RequestMeta {
     char *since_cursor;
     char *until_cursor;
     bool follow;
+    bool listening;
     bool discrete;
     bool boot;
     char *field;
@@ -76,7 +82,6 @@ void RequestMeta_destruct (RequestMeta *args){
         }
         free(clauses);
     }
-
     free(args);
 }
 

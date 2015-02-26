@@ -66,7 +66,9 @@
 #include <assert.h>
 #include <time.h>
 #include <systemd/sd-journal.h>
+#include <systemd/sd-id128.h>
 #include <inttypes.h>
+#define __USE_GNU 1
 #include <signal.h>
 #include <stdint.h>
 
@@ -75,6 +77,7 @@
 /* signal handler function, can be used to interrupt the gateway via keystroke */
 static bool active = true;
 void stop_gateway(int dummy) {
+    printf("DBG: stop handler called\n");
     sd_journal_print(LOG_INFO, "stopping the gateway...");
     active = false; // stop the gateway
 }
@@ -207,7 +210,6 @@ void Connection_destruct (void *_connection){
 
 /* fill a RequestMeta structure with the information from the query_string */
 RequestMeta *parse_json(zmsg_t* query_msg){
-    zframe_t *client_ID = zmsg_pop (query_msg);
     zframe_t *query_frame = zmsg_pop (query_msg);
 
     char *query_string = zframe_strdup (query_frame);
@@ -222,15 +224,15 @@ RequestMeta *parse_json(zmsg_t* query_msg){
 
     /* fill args with arguments from json input */
     RequestMeta *args = malloc( sizeof(RequestMeta) );
-    args->client_ID = client_ID;
-    args->client_ID_string = zframe_strhex (client_ID);
     args->format = get_arg_string(json_args, "format");
     args->at_most = get_arg_int(json_args, "at_most");
-    args->since_timestamp = get_arg_date(json_args, "since_timestamp");
-    args->until_timestamp = get_arg_date(json_args, "until_timestamp");
+    //args->since_timestamp = get_arg_date(json_args, "since_timestamp");
+    args->since_timestamp = 1000000 * time(NULL);
+    args->until_timestamp = -1;
     args->since_cursor = get_arg_string(json_args, "since_cursor");
     args->until_cursor = get_arg_string(json_args, "until_cursor");
     args->follow = get_arg_bool(json_args, "follow");
+    args->listening = get_arg_bool(json_args, "listen");
     args->discrete = get_arg_bool(json_args, "discrete");
     args->boot = get_arg_bool(json_args, "boot");
     args->field = get_arg_string(json_args, "field");
@@ -248,28 +250,22 @@ RequestMeta *parse_json(zmsg_t* query_msg){
 }
 
 /* some small helpers */
-zmsg_t *build_msg_from_frame(zframe_t *ID, zframe_t *flag_frame){
+zmsg_t *build_msg_from_frame(zframe_t *flag_frame){
     zmsg_t *msg = zmsg_new();
-    zframe_t *ID_dup = zframe_dup (ID);
     zframe_t *flag_dup = zframe_dup (flag_frame);
     zmsg_push (msg, flag_dup);
-    zmsg_push (msg, ID_dup);
     return msg;
 }
-zmsg_t *build_entry_msg(zframe_t *ID, char *entry_string, int entry_string_size){
+zmsg_t *build_entry_msg(char *entry_string, int entry_string_size){
     zmsg_t *msg = zmsg_new();
     zframe_t *entry_string_frame = zframe_new (entry_string, entry_string_size);
     zmsg_push (msg, entry_string_frame);
-    zframe_t *ID_dup = zframe_dup (ID);
-    zmsg_push (msg, ID_dup);
     return msg;
 }
-void send_flag( zframe_t *ID, void *socket, zctx_t *ctx, char *flag){
+void send_flag(void *socket, zctx_t *ctx, char *flag){
     zmsg_t *msg = zmsg_new();
-    zframe_t *ID_dup = zframe_dup (ID);
     zframe_t *flag_frame = zframe_new ( flag, strlen(flag) + 1 );
     zmsg_push (msg, flag_frame);
-    zmsg_push (msg, ID_dup);
 
     /* ID will not be destroyed! */
     zmsg_send (&msg, socket);
@@ -327,6 +323,7 @@ char *get_entry_string(sd_journal *j, RequestMeta *args, char** entry_string, si
     SD_JOURNAL_FOREACH_DATA(j, data, length)
         counter++;
     char *entry_fields[counter+1+3];        // +3 for meta information, prefixed by '__'
+	//entry_fields[counter+3] = 0;  // guessing
     int entry_fields_len[counter+1+3];        // +3 for meta information, prefixed by '__'
 
     /* then insert the meta information, memory allocation first */
@@ -384,7 +381,7 @@ char *get_entry_string(sd_journal *j, RequestMeta *args, char** entry_string, si
 
             entry_fields[counter] = (char *) alloca( sizeof(char) * new_length ); 
             memcpy (entry_fields[counter], (void *) field_name, field_name_len);
-            *(entry_fields[counter] + field_name_len) = '\n';
+            entry_fields[counter][field_name_len] = '\n';
             memcpy ( entry_fields[counter] + field_name_len + 1, (char *) &new_length64, 8 );
             memcpy ( entry_fields[counter] + field_name_len + 1 + 8, field_name + field_name_len + 1, length - field_name_len - 1 );
 
@@ -397,6 +394,7 @@ char *get_entry_string(sd_journal *j, RequestMeta *args, char** entry_string, si
     /* the data fields are merged together according to the given output format */
     if( args->format == NULL || strcmp( args->format, "export" ) == 0 || strcmp( args->format, "plain" ) == 0){  
         *entry_string = (char *) malloc( sizeof(char) * ( total_length + counter )); // counter times '\n'
+		assert(entry_string);
         int p = 0;
         for(i=0; i<counter; i++){
             memcpy ( *entry_string + p, (void *) entry_fields[i], entry_fields_len[i] );
@@ -424,7 +422,7 @@ void benchmark( uint64_t initial_time, int log_counter ) {
 
 void send_flag_wrapper (sd_journal *j, RequestMeta *args, void *socket, zctx_t *ctx, const char *message, char *flag) {
     sd_journal_print(LOG_DEBUG, message);
-    send_flag(args->client_ID, socket, ctx, flag);
+    send_flag(socket, ctx, flag);
     sd_journal_close( j );
     RequestMeta_destruct(args);
     return;
@@ -434,11 +432,13 @@ static void *handler_routine (void *_args) {
     RequestMeta *args = (RequestMeta *) _args;
     zctx_t *ctx = zctx_new ();
     void *query_handler = zsocket_new (ctx, ZMQ_DEALER);
-    zsocket_set_sndhwm (query_handler, HANDLER_HWM);
+	assert(query_handler);
+    //zsocket_set_sndhwm (query_handler, HANDLER_HWM);
     int rc = zsocket_connect (query_handler, BACKEND_SOCKET);
+	assert(!rc);
 
     /* send READY to the client */
-    send_flag( args->client_ID, query_handler, NULL, READY );
+    send_flag(query_handler, NULL, READY );
 
     zmq_pollitem_t items [] = {
         { query_handler, 0, ZMQ_POLLIN, 0 },
@@ -452,6 +452,7 @@ static void *handler_routine (void *_args) {
     /* create and adjust the journal pointer according to the information in args */
     sd_journal *j;
     sd_journal_open(&j, SD_JOURNAL_LOCAL_ONLY);
+    
     adjust_journal(args, j);
 
     uint64_t heartbeat_at = zclock_time () + HANDLER_HEARTBEAT_INTERVAL;
@@ -471,26 +472,13 @@ static void *handler_routine (void *_args) {
 
         if (items[0].revents & ZMQ_POLLIN){
             char *client_msg = zstr_recv (query_handler);
-            if( strcmp(client_msg, HEARTBEAT) == 0 ){
-                /* client sent heartbeat, only necessary when 'follow' is active */
-                send_flag(args->client_ID, query_handler, NULL, HEARTBEAT);
-                sd_journal_print(LOG_DEBUG, "received heartbeat, sending it back ...");
-                heartbeat_at = zclock_time () + HANDLER_HEARTBEAT_INTERVAL;
-            }
-            else if( strcmp(client_msg, STOP) == 0 ){
+            if( strcmp(client_msg, STOP) == 0 ){
                 /* client wants no more logs */
                 send_flag_wrapper (j, args, query_handler, ctx, "confirmed stop", STOP);
                 free (client_msg);
-                benchmark(initial_time, log_counter);
                 return NULL;
             }
             free (client_msg);
-        }
-
-        /* timeout from client, only true when 'follow' is active and client does no heartbeating */
-        if (zclock_time () >= heartbeat_at && args->follow) {
-            send_flag_wrapper (j, args, query_handler, ctx, "Client Timeout", TIMEOUT);
-            return NULL;
         }
 
         /* move forwards or backwards? default is backwards */
@@ -506,26 +494,24 @@ static void *handler_routine (void *_args) {
             get_entry_string( j, args, &entry_string, &entry_string_size ); 
             if ( memcmp(entry_string, END, strlen(END)) == 0 ){
                 send_flag_wrapper (j, args, query_handler, ctx, "query finished successfully", END);
-                benchmark(initial_time, log_counter);
                 return NULL;
             }
             else if ( memcmp(entry_string, ERROR, strlen(ERROR)) == 0 ){
-                send_flag(args->client_ID, query_handler, ctx, ERROR);
+                send_flag(query_handler, ctx, ERROR);
                 sd_journal_close( j );
                 RequestMeta_destruct(args);
                 return NULL;
             }
             /* no problems with the new entry, send it */
             else{
-                zmsg_t *entry_msg = build_entry_msg(args->client_ID, entry_string, entry_string_size);
+                zmsg_t *entry_msg = build_entry_msg(entry_string, entry_string_size);
                 free (entry_string);
                 zmsg_send (&entry_msg, query_handler);
-                log_counter++;
             }
         }
         /* end of journal and 'follow' active? => wait some time */
-        else if ( rc == 0 && args->follow ){
-            sd_journal_wait( j, (uint64_t) WAIT_TIMEOUT );
+        else if ( rc == 0 && (args->follow || args->listening) ){
+            sd_journal_wait( j, (uint64_t) -1 );
         }
         /* in case moving the journal pointer around produced an error */
         else if ( rc < 0 ){
@@ -535,7 +521,7 @@ static void *handler_routine (void *_args) {
         /* query finished, send END and close the thread */
         else {
             send_flag_wrapper (j, args, query_handler, ctx, "query finished successfully", END);
-            benchmark(initial_time, log_counter);
+            //benchmark(initial_time, log_counter);
             return NULL;
         }
 
@@ -545,7 +531,7 @@ static void *handler_routine (void *_args) {
 
     /* the at_most option can limit the amount of sent logs */
     send_flag_wrapper (j, args, query_handler, ctx, "query finished successfully", END);
-    benchmark(initial_time, log_counter);
+    //benchmark(initial_time, log_counter);
     return NULL;
 }
 
@@ -589,110 +575,90 @@ The zmq-journal-gatewayd-client can connect to the given socket.\n"
     zctx_t *ctx = zctx_new ();
 
     // Socket to talk to clients
-    void *frontend = zsocket_new (ctx, ZMQ_ROUTER);
+    void *frontend = zsocket_new (ctx, ZMQ_DEALER);
     assert(frontend);
-    zsocket_set_sndhwm (frontend, GATEWAY_HWM);
-    zsocket_set_rcvhwm (frontend, GATEWAY_HWM);
+    //zsocket_set_sndhwm (frontend, GATEWAY_HWM);
+    //zsocket_set_rcvhwm (frontend, GATEWAY_HWM);
 
+	if (!getenv(TARGET_ADDRESS_ENV)) {
+		fprintf(stderr, "%s not specified.\n", TARGET_ADDRESS_ENV);
+		exit(1);
+	}
     if(gateway_socket_address != NULL)
-        zsocket_bind (frontend, gateway_socket_address);
+        zsocket_connect (frontend, gateway_socket_address);
     else
-        zsocket_bind (frontend, DEFAULT_FRONTEND_SOCKET);
+        zsocket_connect (frontend, getenv(TARGET_ADDRESS_ENV));
 
     // Socket to talk to the query handlers
     void *backend = zsocket_new (ctx, ZMQ_ROUTER);
     assert(backend);
-    zsocket_set_sndhwm (backend, GATEWAY_HWM);
-    zsocket_set_rcvhwm (backend, GATEWAY_HWM);
+    //zsocket_set_sndhwm (backend, GATEWAY_HWM);
+    //zsocket_set_rcvhwm (backend, GATEWAY_HWM);
     zsocket_bind (backend, BACKEND_SOCKET);
 
     /* for stopping the gateway via keystroke (ctrl-c) */
-    signal(SIGINT, stop_gateway);
+    printf("DBG: setting stop handler\n");
+    sighandler_t s = signal(SIGINT, stop_gateway);
+    printf("DBG: return of %p, %p\n", s, SIG_ERR);
 
     // Setup the poller for frontend and backend
     zmq_pollitem_t items[] = {
         {frontend, 0, ZMQ_POLLIN, 0},
         {backend, 0, ZMQ_POLLIN, 0},
     };
+    /* initiate connection to the sink */
+    send_flag(frontend, NULL, LOGON );
 
-    zhash_t *connections = zhash_new ();
-    Connection *lookup;
     zmsg_t *msg;
     RequestMeta *args; 
     while ( active ) {
-        zmq_poll (items, 2, -1);
+        zmq_poll (items, 2, 100);
 
         if (items[0].revents & ZMQ_POLLIN) {
             msg = zmsg_recv (frontend);
 
-            zframe_t *client_ID = zmsg_first (msg);
-
-            char *client_ID_string = zframe_strhex (client_ID);
-            lookup = (Connection *) zhash_lookup(connections, client_ID_string);
-
-            /* first case: new query */
-            if( lookup == NULL ){
                 args = parse_json(msg);
                 /* if query is valid open query handler and pass args to it */
-                if (args != NULL){
-                    Connection *new_connection = (Connection *) malloc( sizeof(Connection) );
-                    new_connection->client_ID = client_ID;
-                    new_connection->handler_ID = NULL;
-                    zhash_update (connections, args->client_ID_string, new_connection);
-                    zhash_freefn (connections, args->client_ID_string, Connection_destruct );
+                if (args != NULL) {
                     zthread_new (handler_routine, (void *) args);
                 }
                 /* if args was invalid answer with error */
-                else{
+                else {
                     sd_journal_print(LOG_INFO, "got invalid query");
-                    send_flag( client_ID, frontend, NULL, ERROR );
-                    zframe_destroy (&client_ID);
+                    send_flag(frontend, NULL, ERROR );
                 }
-            }
             /* second case: heartbeat or stop sent by client */
-            else{
-                zframe_t *client_msg_frame = zmsg_last (msg);
-                zmsg_t *client_msg = build_msg_from_frame(lookup->handler_ID, client_msg_frame);
-                zmsg_send (&client_msg, backend);
-            }
             zmsg_destroy ( &msg );
-            free(client_ID_string);
         }
 
         if (items[1].revents & ZMQ_POLLIN) {
             zmsg_t *response = zmsg_recv (backend);
 
             zframe_t *handler_ID = zmsg_pop (response);
-            zframe_t *client_ID = zmsg_first (response);
             zframe_t *handler_response = zmsg_last (response);
 
-            char *client_ID_string = zframe_strhex (client_ID);
             char *handler_response_string = zframe_strdup (handler_response);
-            lookup = (Connection *) zhash_lookup(connections, client_ID_string);
 
             /* the handler ID is inserted in the connection struct when he answers the first time */
-            if( lookup->handler_ID == NULL ){
-                lookup->handler_ID = handler_ID;
-            }
-            else zframe_destroy (&handler_ID);
+            //if( lookup->handler_ID == NULL ){
+                //lookup->handler_ID = handler_ID;
+            //}
+            //else
+				zframe_destroy (&handler_ID);
 
             /* case handler ENDs or STOPs the query, regulary or because of error (e.g. missing heartbeat) */
             if( strcmp( handler_response_string, END ) == 0 
                     || strcmp( handler_response_string, ERROR ) == 0 
                     || strcmp( handler_response_string, STOP ) == 0 
                     || strcmp( handler_response_string, TIMEOUT ) == 0){
-                zhash_delete (connections, client_ID_string);
             }
 
             free(handler_response_string);
-            free(client_ID_string);
             zmsg_send (&response, frontend);
         }
     }
 
-    zhash_destroy (&connections);
     zctx_destroy (&ctx); 
     sd_journal_print(LOG_INFO, "...gateway stopped");
     return 0;
-
 }
