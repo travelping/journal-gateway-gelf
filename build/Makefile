@@ -19,14 +19,14 @@ else
 endif
 
 # gateway and client can be build and installed separately
-all: zmq-journal-gatewayd zmq-journal-gatewayd-client
+all: zmq-journal-gatewayd zmq-journal-gatewayd-sink
 
 install: install_gateway install_client
 
 
 gateway: zmq-journal-gatewayd
 
-client: zmq-journal-gatewayd-client
+client: zmq-journal-gatewayd-sink
 
 zmq-journal-gatewayd: zmq-journal-gatewayd.o
 	$(CC) $(LDFLAGS) $(SYSTEMD_FLAGS) zmq-journal-gatewayd.o -o zmq-journal-gatewayd 
@@ -34,20 +34,20 @@ zmq-journal-gatewayd: zmq-journal-gatewayd.o
 zmq-journal-gatewayd.o: $(SRC_DIR)/zmq-journal-gatewayd.c
 	$(CC) $(CFLAGS) $(SRC_DIR)/zmq-journal-gatewayd.c -o zmq-journal-gatewayd.o
 
-zmq-journal-gatewayd-client: zmq-journal-gatewayd-client.o
-	$(CC) $(LDFLAGS) zmq-journal-gatewayd-client.o -o zmq-journal-gatewayd-client 
+zmq-journal-gatewayd-sink: zmq-journal-gatewayd-sink.o
+	$(CC) $(LDFLAGS) zmq-journal-gatewayd-sink.o -o zmq-journal-gatewayd-sink 
 
-zmq-journal-gatewayd-client.o: $(SRC_DIR)/zmq-journal-gatewayd-client.c
-	$(CC) $(CFLAGS) $(SRC_DIR)/zmq-journal-gatewayd-client.c -o zmq-journal-gatewayd-client.o
+zmq-journal-gatewayd-sink.o: $(SRC_DIR)/zmq-journal-gatewayd-sink.c
+	$(CC) $(CFLAGS) $(SRC_DIR)/zmq-journal-gatewayd-sink.c -o zmq-journal-gatewayd-sink.o
 
 install_gateway:
 	mkdir -p $(DESTDIR); cp zmq-journal-gatewayd $(DESTDIR)/
 	cp $(MISC_DIR)/zmq-journal-gatewayd.service $(SERVICE_DIR)/
 
 install_client:
-	mkdir -p $(DESTDIR); cp zmq-journal-gatewayd-client $(DESTDIR)/
+	mkdir -p $(DESTDIR); cp zmq-journal-gatewayd-sink $(DESTDIR)/
 	cp $(MISC_DIR)/zmq-journal-gatewayd.service $(SERVICE_DIR)/
 
 clean:
-	rm *.o zmq-journal-gatewayd zmq-journal-gatewayd-client
+	rm *.o zmq-journal-gatewayd zmq-journal-gatewayd-sink
 
