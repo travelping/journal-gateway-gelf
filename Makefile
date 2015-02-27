@@ -36,5 +36,5 @@ install_client:
 	install -D zmq-journal-gatewayd-sink $(DESTDIR)
 
 clean:
-	rm *.o zmq-journal-gatewayd zmq-journal-gatewayd-sink
+	rm -f *.o zmq-journal-gatewayd zmq-journal-gatewayd-sink
 
