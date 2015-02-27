@@ -82,11 +82,6 @@ void stop_gateway(int dummy) {
     active = false; // stop the gateway
 }
 
-typedef struct Connection {
-    zframe_t *client_ID;
-    zframe_t *handler_ID;
-}Connection;
-
 char *get_arg_string(json_t *json_args, char *key){
     json_t *json_string = json_object_get(json_args, key);
     if( json_string != NULL ){
@@ -198,14 +193,6 @@ uint64_t get_arg_date(json_t *json_args, char *key){
     else{
         return -1;
     }
-}
-
-/* represents a connection between client and handler */
-void Connection_destruct (void *_connection){
-    Connection *connection = (Connection *) _connection;
-    zframe_destroy( &(connection->handler_ID) );
-    zframe_destroy ( &(connection->client_ID) );
-    free( connection ) ;
 }
 
 /* fill a RequestMeta structure with the information from the query_string */
@@ -612,7 +599,7 @@ The zmq-journal-gatewayd-client can connect to the given socket.\n"
     zmsg_t *msg;
     RequestMeta *args; 
     while ( active ) {
-        zmq_poll (items, 2, 100);
+        zmq_poll (items, 2, 60000);
 
         if (items[0].revents & ZMQ_POLLIN) {
             msg = zmsg_recv (frontend);
@@ -657,6 +644,8 @@ The zmq-journal-gatewayd-client can connect to the given socket.\n"
             zmsg_send (&response, frontend);
         }
     }
+    /*telling the sink that this source is shutting down*/
+    send_flag(frontend, NULL, LOGOFF );
 
     zctx_destroy (&ctx); 
     sd_journal_print(LOG_INFO, "...gateway stopped");
