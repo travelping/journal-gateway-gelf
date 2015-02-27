@@ -16,8 +16,9 @@ zmq-journal-gatewayd-client | systemd-journal-remote -o /var/log/journal/[machin
 
 Use --help for an overview of all commands.
 
-Mode of Operation
+Planned mode of Operation
 -----------------
+The following is the planned operation mode of the gateway.
 
       +----------------+
       |    journald    |
@@ -44,15 +45,15 @@ Mode of Operation
       |                |         +---------------------------+   |              |
       |                |                                         |              |
       |                | ZMTP    +------+    +---------------+   |              |
-      |                |-------->| ZMTP |--->|journald-remote|-->|              |
-      |                |         +------+    +---------------+   |              |
-      |                |                                         |              |
+      |                |-------->| ZMTP |--->|"gateway-sink" |-->|              |
+      |                |         +------+    |uses jrd-remote|   |              |
+      |                |                     +---------------+   |              |              |
       |                |                                         |              |
       +----------------+                                         +--------------+
                                                                  +-----+  +-----+
                                                                  |file |  |file |
                                                                  +-----+  +-----+
-
+The current state only supports forwarding via zmtp.
 
 Installation
 ------------
