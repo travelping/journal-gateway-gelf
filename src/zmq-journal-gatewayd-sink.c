@@ -25,6 +25,7 @@
 #include <signal.h>
 #include <time.h>
 
+#include "uthash/uthash.h"
 #include "zmq-journal-gatewayd.h"
 
 static zctx_t *ctx;
@@ -39,8 +40,10 @@ char    *since_timestamp=NULL, *until_timestamp=NULL, *client_socket_address=NUL
         *since_cursor=NULL, *until_cursor=NULL, *filter=NULL;
 
 typedef struct {
-    FILE    *sjr;
-    time_t  time_last_message;
+    char            *client_key;
+    FILE            *sjr;
+    time_t          time_last_message;
+    UT_hash_handle  hh; /*requirement for uthash*/
 }Connection;
 
 time_t get_clock_time(){
@@ -144,7 +147,6 @@ void stop_handler(int dummy) {
 
 /* Do sth with the received message */
 int response_handler(zframe_t* cid, zmsg_t *response, FILE *sjr){
-    fprintf(stderr, "DBG: in response_handler\n");
     zframe_t *frame;
     void *frame_data;
     size_t frame_size;
@@ -165,7 +167,6 @@ int response_handler(zframe_t* cid, zmsg_t *response, FILE *sjr){
         }
         else if( memcmp( frame_data, ERROR, strlen(ERROR) ) == 0 ){
             zframe_destroy (&frame);
-            fprintf(stderr, "DBG: received ERROR\n");
             ret = -1;
             break;
         }
@@ -184,23 +185,18 @@ int response_handler(zframe_t* cid, zmsg_t *response, FILE *sjr){
             free(query_string);
         }
         else if( memcmp( frame_data, LOGOFF, strlen(LOGOFF) ) == 0 ){
-            fprintf(stderr, "DBG: received LOGOFF:%s \n", frame_data);
             ret=2;
         }
         else{
 			assert(((char*)frame_data)[0] == '_');
-            fprintf(stderr, "DBG: before atempt to write to journal\n" );
             int fd = fileno(sjr);
 
-            fprintf(stderr, "writing %lu bytes to %i: %s\n---\n", frame_size, fd, frame_data);
 			fflush(stderr);
             write(fd, frame_data, frame_size);
 
             write(fd, "\n", 1);
-            fprintf(stderr, "DBG: after atempt to write to journal\n" );
             log_counter++;
         }
-        fprintf(stderr, "DBG: destroying frame\n");
         zframe_destroy (&frame);
     }while(more);
     return ret;
@@ -323,7 +319,8 @@ The client is used to connect to zmq-journal-gatewayd via the '--socket' option.
                                                                                 // updated with every new message (doesn't need to be a heartbeat)
     initial_time = zclock_time ();
 
-    zhash_t *connections = zhash_new ();
+    // zhash_t *connections = zhash_new ();
+    Connection *connections = NULL;
     Connection *lookup;
 
     if (!getenv(REMOTE_JOURNAL_DIRECTORY)) {
@@ -333,7 +330,7 @@ The client is used to connect to zmq-journal-gatewayd via the '--socket' option.
     const char sjr_cmd_format[] = "/lib/systemd/systemd-journal-remote -o %s/%s.journal -";
     const char *remote_journal_directory = getenv(REMOTE_JOURNAL_DIRECTORY);
     assert(remote_journal_directory);
-    time_t last_check;
+    time_t last_check=0;
 
     /* receive logs, initiate connections to new sources, respond to heartbeats */
     while ( active ){
@@ -347,7 +344,8 @@ The client is used to connect to zmq-journal-gatewayd via the '--socket' option.
 			zframe_t *client_ID = zmsg_pop (response);
             assert(client_ID);
             char* client_key = zframe_strhex(client_ID);
-            lookup = zhash_lookup (connections, client_key);
+            // lookup = zhash_lookup (connections, client_key);
+            HASH_FIND_STR( connections, client_key, lookup );
             /*new connection*/
             if ( lookup == NULL ){
                 lookup = (Connection *) malloc( sizeof(Connection) );
@@ -356,18 +354,18 @@ The client is used to connect to zmq-journal-gatewayd via the '--socket' option.
                 assert(strlen(remote_journal_directory) + strlen(journalname) +
 						sizeof(sjr_cmd_format)<sizeof(pathtojournalfile));
                 sprintf (pathtojournalfile, sjr_cmd_format, remote_journal_directory, journalname);
-                fprintf(stderr, "DBG: opening journal-remote: [%s]\n", pathtojournalfile);
                 lookup->sjr = popen(pathtojournalfile, "w");
+                lookup->client_key=client_key;
                 assert(lookup->sjr);
-                fprintf(stderr, "DBG: opnened journal-remote: %i\n", fileno(lookup->sjr));
-                zhash_insert(connections, client_key, lookup);
+                // zhash_insert(connections, client_key, lookup);
+                HASH_ADD_STR(connections, client_key, lookup);
+            }
+            else{
+                free(client_key);
             }
             lookup->time_last_message = get_clock_time();
-            fprintf(stderr, "DBG: into response_handler\n");
             rc = response_handler(client_ID, response, lookup->sjr);
-            fprintf(stderr, "DBG: before flushing\n");
             fflush(lookup->sjr);
-			fprintf(stderr, "flushed %i\n", fileno(lookup->sjr));
             zmsg_destroy (&response);
             /* end of log stream and not listening for more OR did an error occur? */
             if ( rc==1 || rc==-1 ){
@@ -384,10 +382,14 @@ The client is used to connect to zmq-journal-gatewayd via the '--socket' option.
     while( sjr != NULL ){
         pclose(sjr);
                 pclose(lookup->sjr);
-                zhash_delete(connections, client_key);
+                // zhash_delete(connections, client_key);
+                HASH_DEL(connections, lookup);
             }
         }
-        if ( difftime(get_clock_time(), last_check) > 60 ){
+        time_t now = get_clock_time();
+        if ( difftime(now, last_check) > 60 ){
+            last_check=now;
+            #if 0
             lookup = zhash_first(connections);
             while( lookup != NULL ){
                 if( difftime(get_clock_time(), lookup->time_last_message)){
@@ -398,17 +400,21 @@ The client is used to connect to zmq-journal-gatewayd via the '--socket' option.
                 }
                 lookup=zhash_next(connections);
             }
+            #endif
+
+            Connection *i, *tmp;
+            HASH_ITER(hh, connections, i, tmp){
+                if (difftime(now, i->time_last_message)>60*60){
+                    HASH_DEL(connections, i);
+                    free(i->client_key);
+                    pclose(i->sjr);
+                    free(i);
+                }
+            }
         }
     }
-
-    lookup = zhash_first(connections);
-    while( lookup != NULL ){
-        pclose(lookup->sjr);
-        zhash_delete(connections, zhash_cursor(connections));
-        lookup=zhash_first(connections);
-    }
     /* clear everything up */
-    zhash_destroy(&connections);
+    // zhash_destroy(&connections);
     zsocket_destroy (ctx, client);
     zctx_destroy (&ctx);
 
