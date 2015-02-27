@@ -4,7 +4,7 @@ MISC_DIR = $(BASE_DIR)/misc
 DESTDIR = /usr/bin
 
 # CC = gcc
-CFLAGS = -c -O2 # -ggdb -Wall -Wextra
+CFLAGS = -c -O2 -Wall # -ggdb -Wextra
 LDFLAGS = -lzmq -lczmq -ljansson
 
 SYSTEMD_FLAGS = -lsystemd-id128

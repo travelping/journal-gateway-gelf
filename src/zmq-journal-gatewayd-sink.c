@@ -117,7 +117,6 @@ void benchmark(uint64_t initial_time, int log_counter) {
 
 static bool active = true;
 void stop_handler(int dummy) {
-    //printf("DBG: stop handler called\n");
     int rc;
     zmq_pollitem_t items [] = {
         { client, 0, ZMQ_POLLIN, 0 },
