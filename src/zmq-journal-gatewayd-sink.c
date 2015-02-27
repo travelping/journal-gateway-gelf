@@ -24,6 +24,8 @@
 #include <assert.h>
 #include <signal.h>
 #include <time.h>
+#include <systemd/sd-journal.h>
+#include <systemd/sd-id128.h>
 
 #include "uthash/uthash.h"
 #include "zmq-journal-gatewayd.h"
@@ -152,6 +154,7 @@ int response_handler(zframe_t* cid, zmsg_t *response, FILE *sjr){
     size_t frame_size;
     int more;
     int ret = 0; 
+    char* client_ID = zframe_strhex(cid);
 
     do{
         frame = zmsg_pop (response);
@@ -183,8 +186,10 @@ int response_handler(zframe_t* cid, zmsg_t *response, FILE *sjr){
 			zmsg_push(m, cid);
 			zmsg_send (&m, client);
             free(query_string);
+            sd_journal_print(LOG_INFO, "gateway has a new source, ID: %s", client_ID);
         }
         else if( memcmp( frame_data, LOGOFF, strlen(LOGOFF) ) == 0 ){
+            sd_journal_print(LOG_INFO, "one source of the gateway logged off, ID: %s", client_ID);
             ret=2;
         }
         else{
