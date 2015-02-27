@@ -69,11 +69,11 @@ char* make_json_timestamp(char *timestamp){
 	}
 
     char *json_timestamp = (char *) malloc(sizeof(char) * 21);
-    json_timestamp[0] = '\0'; 
-    char *ptr = strtok(timestamp, " ");
+    json_timestamp[0] = '\0';
+    strtok(timestamp, " ");
     strcat(json_timestamp, timestamp);
     strcat(json_timestamp, "T");
-    ptr = strtok(NULL, " ");
+    strtok(NULL, " ");
     strcat(json_timestamp+11, timestamp+11);
     strcat(json_timestamp, "Z");
     return json_timestamp;
@@ -112,7 +112,8 @@ void benchmark(uint64_t initial_time, int log_counter) {
     uint64_t current_time = zclock_time ();
     uint64_t time_diff_sec = (current_time - initial_time)/1000;
     uint64_t log_rate_sec = log_counter / time_diff_sec;
-    printf("<< sent %d logs in %d seconds ( %d logs/sec ) >>\n", log_counter, time_diff_sec, log_rate_sec);
+    printf("<< sent %d logs in %"PRIu64" seconds ( %" PRIu64 " logs/sec ) >>\n", 
+        log_counter, time_diff_sec, log_rate_sec);
 }
 
 static bool active = true;
@@ -281,14 +282,14 @@ Usage: zmq-journal-gatewayd-client [--help] [--socket] [--since] [--until]\n\
 \t\t\tExample: --filter [[\\\"PRIORITY=3\\\"]] only shows logs with exactly priority 3 \n\n\
 The client is used to connect to zmq-journal-gatewayd via the '--socket' option.\n"
                 );
-                return;
+                return 0;
             case 0:     /* getopt_long() set a variable, just keep going */
                 break;
             case ':':   /* missing option argument */
-                fprintf(stderr, "%s: option `-%c' requires an argument\n", argv[0], optarg);
-                return;
+                fprintf(stderr, "%s: option `-%s' requires an argument\n", argv[0], optarg);
+                return 0;
             default:    /* invalid option */
-                return;
+                return 0;
         }
     } 
 
@@ -313,12 +314,9 @@ The client is used to connect to zmq-journal-gatewayd via the '--socket' option.
     zmsg_t *response;
     int rc;
 
-    uint64_t heartbeat_at = zclock_time () + HEARTBEAT_INTERVAL;                // the absolute time after which a heartbeat is sent
-    uint64_t server_heartbeat_at = zclock_time () + SERVER_HEARTBEAT_INTERVAL;  // the absolute time after which a server timeout occours, 
-                                                                                // updated with every new message (doesn't need to be a heartbeat)
     initial_time = zclock_time ();
 
-    // zhash_t *connections = zhash_new ();
+    //  zhash_t *connections = zhash_new ();
     Connection *connections = NULL;
     Connection *lookup;
 
@@ -340,7 +338,7 @@ The client is used to connect to zmq-journal-gatewayd via the '--socket' option.
         }
         if(items[0].revents & ZMQ_POLLIN){
             response = zmsg_recv(client);
-			zframe_t *client_ID = zmsg_pop (response);
+            zframe_t *client_ID = zmsg_pop (response);
             assert(client_ID);
             char* client_key = zframe_strhex(client_ID);
             // lookup = zhash_lookup (connections, client_key);
@@ -351,7 +349,7 @@ The client is used to connect to zmq-journal-gatewayd via the '--socket' option.
                 char pathtojournalfile[256];
                 const char *journalname = zframe_strhex(client_ID);
                 assert(strlen(remote_journal_directory) + strlen(journalname) +
-						sizeof(sjr_cmd_format)<sizeof(pathtojournalfile));
+                        sizeof(sjr_cmd_format)<sizeof(pathtojournalfile));
                 sprintf (pathtojournalfile, sjr_cmd_format, remote_journal_directory, journalname);
                 lookup->sjr = popen(pathtojournalfile, "w");
                 lookup->client_key=client_key;
@@ -371,15 +369,6 @@ The client is used to connect to zmq-journal-gatewayd via the '--socket' option.
                 break;
             }
             if ( rc==2 ){
-                pclose(sjr);
-                zhash_delete(connections, client_key);
-            }
-        }
-    }
-
-    sjr = zhash_first(connections);
-    while( sjr != NULL ){
-        pclose(sjr);
                 pclose(lookup->sjr);
                 // zhash_delete(connections, client_key);
                 HASH_DEL(connections, lookup);

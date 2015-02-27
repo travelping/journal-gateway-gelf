@@ -64,11 +64,11 @@
 #include <string.h>
 #include <alloca.h>
 #include <assert.h>
-#include <time.h>
 #include <systemd/sd-journal.h>
 #include <systemd/sd-id128.h>
 #include <inttypes.h>
 #define __USE_GNU 1
+#include <time.h>
 #include <signal.h>
 #include <stdint.h>
 
@@ -77,7 +77,6 @@
 /* signal handler function, can be used to interrupt the gateway via keystroke */
 static bool active = true;
 void stop_gateway(int dummy) {
-    printf("DBG: stop handler called\n");
     sd_journal_print(LOG_INFO, "stopping the gateway...");
     active = false; // stop the gateway
 }
@@ -181,9 +180,9 @@ uint64_t get_arg_date(json_t *json_args, char *key){
         struct tm tm;
         time_t t;
         char *ptr = strtok(string_cpy, "T.");
-        strptime(ptr, "%Y-%m-%d", &tm);
+        strptime_l(ptr, "%Y-%m-%d", &tm, 0);
         ptr = strtok(NULL, "T.");
-        strptime(ptr, "%H:%M:%S", &tm);
+        strptime_l(ptr, "%H:%M:%S", &tm, 0);
         tm.tm_isdst = -1;
 
         t = mktime(&tm) * 1000000;      // this time needs to be adjusted by 1000000 to fit the journal time
@@ -332,7 +331,7 @@ char *get_entry_string(sd_journal *j, RequestMeta *args, char** entry_string, si
         free(cursor);
         *entry_string = END;
         *entry_string_size = strlen(END);
-        return;
+        return NULL;
     }
 
     /* until now the prefixes for the meta information are missing */
@@ -395,10 +394,11 @@ char *get_entry_string(sd_journal *j, RequestMeta *args, char** entry_string, si
         *entry_string = ERROR;
         *entry_string_size = strlen(ERROR);
     }
-    return;
+    return NULL;
 }
 
 /* for measuring performance of the gateway */
+#ifdef BENCHMARK
 void benchmark( uint64_t initial_time, int log_counter ) {
     uint64_t current_time = zclock_time ();
     uint64_t time_diff_sec = (current_time - initial_time)/1000;
@@ -406,6 +406,7 @@ void benchmark( uint64_t initial_time, int log_counter ) {
     /* use this only when you are certain not to produce floating point exceptions :D */
     //sd_journal_print(LOG_DEBUG, "sent %d logs in %d seconds ( %d logs/sec )\n", log_counter, time_diff_sec, log_rate_sec);
 }
+#endif
 
 void send_flag_wrapper (sd_journal *j, RequestMeta *args, void *socket, zctx_t *ctx, const char *message, char *flag) {
     sd_journal_print(LOG_DEBUG, message);
@@ -442,9 +443,6 @@ static void *handler_routine (void *_args) {
     
     adjust_journal(args, j);
 
-    uint64_t heartbeat_at = zclock_time () + HANDLER_HEARTBEAT_INTERVAL;
-    uint64_t initial_time = zclock_time ();
-    int log_counter = 0;
     int loop_counter = args->at_most;
 
     while (loop_counter > 0 || args->at_most == -1) {
@@ -546,14 +544,14 @@ Usage: zmq-journal-gatewayd [--help] [--socket]\n\n\
 \t--socket \trequires a socket (must be usable by ZeroMQ), default is \"tcp://*:5555\"\n\n\
 The zmq-journal-gatewayd-client can connect to the given socket.\n"
                 );
-                return;
+                return 0;
             case 0:     /* getopt_long() set a variable, just keep going */
                 break;
             case ':':   /* missing option argument */
-                fprintf(stderr, "%s: option `-%c' requires an argument\n", argv[0], optarg);
-                return;
+                fprintf(stderr, "%s: option `-%s' requires an argument\n", argv[0], optarg);
+                return 0;
             default:    /* invalid option */
-                return;
+                return 0;
         }
     } 
 
@@ -584,9 +582,7 @@ The zmq-journal-gatewayd-client can connect to the given socket.\n"
     zsocket_bind (backend, BACKEND_SOCKET);
 
     /* for stopping the gateway via keystroke (ctrl-c) */
-    printf("DBG: setting stop handler\n");
-    sighandler_t s = signal(SIGINT, stop_gateway);
-    printf("DBG: return of %p, %p\n", s, SIG_ERR);
+    signal(SIGINT, stop_gateway);
 
     // Setup the poller for frontend and backend
     zmq_pollitem_t items[] = {
