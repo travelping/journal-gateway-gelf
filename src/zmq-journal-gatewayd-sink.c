@@ -54,11 +54,12 @@ time_t get_clock_time(){
     return time.tv_sec;
 }
 
-/* represents a connection between client and handler */
-void Connection_destruct (void *_connection){
-    Connection *connection = (Connection *) _connection;
-    pclose(connection->sjr);
-    free( connection ) ;
+/* removes item from hash */
+void con_hash_delete(Connection *hash, Connection *item){
+    HASH_DEL(hash, item);
+    free(item->client_key);
+    pclose(item->sjr);
+    free(item);
 }
 
 char* make_json_timestamp(char *timestamp){
@@ -375,39 +376,22 @@ The client is used to connect to zmq-journal-gatewayd via the '--socket' option.
             }
             if ( rc==2 ){
                 pclose(lookup->sjr);
-                // zhash_delete(connections, client_key);
                 HASH_DEL(connections, lookup);
             }
         }
         time_t now = get_clock_time();
         if ( difftime(now, last_check) > 60 ){
             last_check=now;
-            #if 0
-            lookup = zhash_first(connections);
-            while( lookup != NULL ){
-                if( difftime(get_clock_time(), lookup->time_last_message)){
-                    pclose(lookup->sjr);
-                    zhash_delete(connections, zhash_cursor(connections));
-                    /*quadratischer aufwand, kann auf 2n reduziert werden*/
-                    lookup=zhash_first(connections);
-                }
-                lookup=zhash_next(connections);
-            }
-            #endif
-
             Connection *i, *tmp;
             HASH_ITER(hh, connections, i, tmp){
                 if (difftime(now, i->time_last_message)>60*60){
-                    HASH_DEL(connections, i);
-                    free(i->client_key);
-                    pclose(i->sjr);
-                    free(i);
+                    /* remove i from connections */
+                    con_hash_delete(connections, i);
                 }
             }
         }
     }
     /* clear everything up */
-    // zhash_destroy(&connections);
     zsocket_destroy (ctx, client);
     zctx_destroy (&ctx);
 
