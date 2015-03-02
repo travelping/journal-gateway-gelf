@@ -2,8 +2,8 @@
 Description=A ZeroMQ logging gateway for Journald.
 
 [Service]
-EnvironmentFile=~/conf/zmq_gateway.conf
-ExecStart=env TARGET_ADDR=$GATEWAY_TARGET /usr/bin/zmq-journal-gatewayd
+EnvironmentFile=/etc/zmq-journal-gatewayd.conf
+ExecStart=/usr/bin/zmq-journal-gatewayd
 ExecStop=/bin/kill -s sigint $MAINPID
 Restart=on-failure
 

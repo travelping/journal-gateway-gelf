@@ -15,8 +15,8 @@
                                                 // default: 1 hour
 
 
-#define TARGET_ADDRESS_ENV "TARGET_ADDR"
-#define REMOTE_JOURNAL_DIRECTORY "JOURNAL_DIR"
+#define TARGET_ADDRESS_ENV "JOURNAL_REMOTE_TARGET"
+#define REMOTE_JOURNAL_DIRECTORY "JOURNAL_REMOTE_DIR"
 
 /* definitions for internal communication between gateway and client */
 #define READY "\001"
