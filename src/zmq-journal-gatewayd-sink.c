@@ -205,6 +205,9 @@ int response_handler(zframe_t* cid, zmsg_t *response, FILE *sjr){
         }
         zframe_destroy (&frame);
     }while(more);
+
+    free(client_ID);
+
     return ret;
 }
 
@@ -228,9 +231,13 @@ int main ( int argc, char *argv[] ){
 
     int c;
 
-    /*set default since filter*/
-    //since_timestamp = "now";
-    //needs correct formatting, source does not accept token "now"
+    const char *remote_journal_directory = getenv(REMOTE_JOURNAL_DIRECTORY);
+    if (!(remote_journal_directory)) {
+        fprintf(stderr, "%s not specified.\n", REMOTE_JOURNAL_DIRECTORY);
+        exit(1);
+    }
+    const char sjr_cmd_format[] = "/lib/systemd/systemd-journal-remote -o %s/%s.journal -";
+
 
     while((c = getopt_long(argc, argv, "a:b:c:d:e:f:ghs:", longopts, NULL)) != -1) {
         switch (c) {
@@ -326,13 +333,7 @@ The client is used to connect to zmq-journal-gatewayd via the '--socket' option.
     Connection *connections = NULL;
     Connection *lookup;
 
-    if (!getenv(REMOTE_JOURNAL_DIRECTORY)) {
-        fprintf(stderr, "%s not specified.\n", REMOTE_JOURNAL_DIRECTORY);
-        exit(1);
-    }
-    const char sjr_cmd_format[] = "/lib/systemd/systemd-journal-remote -o %s/%s.journal -";
-    const char *remote_journal_directory = getenv(REMOTE_JOURNAL_DIRECTORY);
-    assert(remote_journal_directory);
+    /* timer for timeouts */
     time_t last_check=0;
 
     /* receive logs, initiate connections to new sources, respond to heartbeats */
@@ -353,7 +354,7 @@ The client is used to connect to zmq-journal-gatewayd via the '--socket' option.
             if ( lookup == NULL ){
                 lookup = (Connection *) malloc( sizeof(Connection) );
                 char pathtojournalfile[256];
-                const char *journalname = zframe_strhex(client_ID);
+                const char *journalname = client_key;
                 assert(strlen(remote_journal_directory) + strlen(journalname) +
                         sizeof(sjr_cmd_format)<sizeof(pathtojournalfile));
                 sprintf (pathtojournalfile, sjr_cmd_format, remote_journal_directory, journalname);
