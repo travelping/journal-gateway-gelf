@@ -1,4 +1,4 @@
-zmq-journal-gatewayd
+journal-gateway-zmtp
 ====================
 
 A ZeroMQ gateway for sending logs from systemd's journald over the network and a sink (both CLI tools).
@@ -56,16 +56,14 @@ yum install jansson jansson-devel systemd-devel
 for jansson and systemd. To install ZMQ and CZMQ follow the instructions on  the linked sites.
 
 
-Then just execute (in the zmq-journal-gatewayd directory):
+Then just execute (in the journal-gateway-zmtp directory):
 
 ```bash
-cd build
-
 make              # you can also just build the gateway or the client 
                   # with 'make gateway' or 'make client' 
 
 sudo make install	# puts the binaries to /usr/bin; 
-                  # 'make install_gateway' or 'make install_client' is also
+                  # 'make source' or 'make sink' is also
                   # possible
 sudo ldconfig
 ```
@@ -81,19 +79,19 @@ If you want it to stay listening for more than one connection, you should start 
 
 You can start the sink via:
 ```bash
-env JOURNAL_DIR=[journal directory] zmq-journal-gatewayd-sink [options]
+env JOURNAL_DIR=[journal directory] journal-gateway-zmtp-sink [options]
 ```
 You must specify a directory in which you want to save your remote journals (set via environment variable JOURNAL_DIR).
 The journal file names are based on the IDs of the gateways.
 Every new gateway-sink connection will be logged in the journal:
 
 ```bash
-Mär 02 09:58:42 virtual-fedora-sbs zmq-journal-gatewayd-sink[9623]: gateway has a new source, ID: 006B8B4567
+Mär 02 09:58:42 virtual-fedora-sbs journal-gateway-zmtp-sink[9623]: gateway has a new source, ID: 006B8B4567
 ```
 
 If you want to use this tool as a relay you need to store the received logs into the local journal directory:
 ```bash
-env JOURNAL_DIR=/var/log/journal/[machine-id] zmq-journal-gatewayd-sink
+env JOURNAL_DIR=/var/log/journal/[machine-id] journal-gateway-zmtp-sink
 ```
 
 This way the gateway can access this journal files and will forward them to the next sink.
@@ -103,7 +101,7 @@ This way the gateway can access this journal files and will forward them to the 
 Installing the gateway will also install a service file to execute the gateway as a systemd unit:
 
 ```bash
-systemctl start zmq-journal-gatewayd    # connects by default to "tcp://127.0.0.1:5555"
+systemctl start journal-gateway-zmtp-source    # connects by default to "tcp://127.0.0.1:5555"
 ```
 
 If you need other sockets you can write a configuration file for the service:
@@ -111,7 +109,7 @@ The service looks for a configuration file named "zmq_gateway.conf" in the direc
 
 If you want to start the gateway without using systemd, you can type
 ```bash
-env TARGET_ADDR=[sink adress] zmq-journal-gatewayd
+env TARGET_ADDR=[sink adress] journal-gateway-zmtp-source
 ```
 where [sink adress] is the exposed socket of the sink.
 
@@ -122,11 +120,11 @@ Example
 
 Start the sink:
 ```bash
-env JOURNAL_DIR=~/logs/remote/ zmq-journal-gatewayd-sink --listen 
+env JOURNAL_DIR=~/logs/remote/ journal-gateway-zmtp-sink --listen 
 ```
 Start the gateway:
 ```bash
-env TARGET_ADDR=tcp://127.0.0.1:5555 zmq-journal-gatewayd
+env TARGET_ADDR=tcp://127.0.0.1:5555 journal-gateway-zmtp-source
 ```
 
 This will write everything in your journal into a journal file in the specified directory.

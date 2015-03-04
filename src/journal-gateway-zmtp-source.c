@@ -20,7 +20,7 @@
 */
 
 /*
- * 'zmq-journal-gatewayd' is a logging gateway for systemd's journald. It 
+ * 'journal-gateway-zmtp' is a logging gateway for systemd's journald. It 
  * extracts logs from the journal according to given conditions and sends them
  * to a sink which requested the logs via a json-object. This object is sent
  * as a string. As transport ZeroMQ is used. Since the gateway works straight 
@@ -72,7 +72,7 @@
 #include <signal.h>
 #include <stdint.h>
 
-#include "zmq-journal-gatewayd.h"
+#include "journal-gateway-zmtp.h"
 
 /* signal handler function, can be used to interrupt the gateway via keystroke */
 static bool active = true;
@@ -538,11 +538,11 @@ int main (int argc, char *argv[]){
                 break;
             case 'h':
                 fprintf(stdout, 
-"zmq-journal-gatewayd -- sending logs from systemd's journal over the network\n\
-Usage: zmq-journal-gatewayd [--help] [--socket]\n\n\
+"journal-gateway-zmtp-source -- sending logs from systemd's journal over the network\n\
+Usage: journal-gateway-zmtp-source [--help] [--socket]\n\n\
 \t--help \t\twill show this\n\
-\t--socket \trequires a socket (must be usable by ZeroMQ), default is \"tcp://*:5555\"\n\n\
-The zmq-journal-gatewayd-client can connect to the given socket.\n"
+\t--socket \trequires a socket (must be usable by ZeroMQ) to connect to journal-gateway-zmtp-sink\n\n\
+The journal-gateway-zmtp-sink has to expose the given socket.\n"
                 );
                 return 0;
             case 0:     /* getopt_long() set a variable, just keep going */

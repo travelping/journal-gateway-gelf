@@ -1,4 +1,4 @@
 *.o
-zmq-journal-gatewayd
+zmq-journal-gatewayd-source
 zmq-journal-gatewayd-sink
 *.tags*

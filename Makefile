@@ -8,23 +8,23 @@ LDFLAGS = -lzmq -lczmq -ljansson
 
 SYSTEMD_LDFLAGS = -lsystemd
 
-default: zmq-journal-gatewayd zmq-journal-gatewayd-sink
+default: journal-gateway-zmtp-source journal-gateway-zmtp-sink
 
-gateway: zmq-journal-gatewayd
-client: zmq-journal-gatewayd-sink
+source: journal-gateway-zmtp-source
+sink: journal-gateway-zmtp-sink
 
-zmq-journal-gatewayd: zmq-journal-gatewayd.o
-	$(CC) zmq-journal-gatewayd.o $(LDFLAGS) $(SYSTEMD_LDFLAGS) -o zmq-journal-gatewayd
+journal-gateway-zmtp-source: journal-gateway-zmtp-source.o
+	$(CC) journal-gateway-zmtp-source.o $(LDFLAGS) $(SYSTEMD_LDFLAGS) -o journal-gateway-zmtp-source
 
-zmq-journal-gatewayd.o: $(SRC_DIR)/zmq-journal-gatewayd.c
-	$(CC) $(CFLAGS) $(SRC_DIR)/zmq-journal-gatewayd.c -o zmq-journal-gatewayd.o
+journal-gateway-zmtp-source.o: $(SRC_DIR)/journal-gateway-zmtp-source.c
+	$(CC) $(CFLAGS) $(SRC_DIR)/journal-gateway-zmtp-source.c -o journal-gateway-zmtp-source.o
 
-zmq-journal-gatewayd-sink: zmq-journal-gatewayd-sink.o
-	$(CC) zmq-journal-gatewayd-sink.o $(LDFLAGS) $(SYSTEMD_LDFLAGS) -o zmq-journal-gatewayd-sink
+journal-gateway-zmtp-sink: journal-gateway-zmtp-sink.o
+	$(CC) journal-gateway-zmtp-sink.o $(LDFLAGS) $(SYSTEMD_LDFLAGS) -o journal-gateway-zmtp-sink
 
-zmq-journal-gatewayd-sink.o: $(SRC_DIR)/zmq-journal-gatewayd-sink.c
-	$(CC) $(CFLAGS) $(SRC_DIR)/zmq-journal-gatewayd-sink.c -o zmq-journal-gatewayd-sink.o
+journal-gateway-zmtp-sink.o: $(SRC_DIR)/journal-gateway-zmtp-sink.c
+	$(CC) $(CFLAGS) $(SRC_DIR)/journal-gateway-zmtp-sink.c -o journal-gateway-zmtp-sink.o
 
 clean:
-	rm -f *.o zmq-journal-gatewayd zmq-journal-gatewayd-sink
+	rm -f *.o journal-gateway-zmtp-source journal-gateway-zmtp-sink
 

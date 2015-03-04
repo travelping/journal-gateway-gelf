@@ -28,7 +28,7 @@
 #include <systemd/sd-id128.h>
 
 #include "uthash/uthash.h"
-#include "zmq-journal-gatewayd.h"
+#include "journal-gateway-zmtp.h"
 
 static zctx_t *ctx;
 static void *client;
@@ -274,12 +274,12 @@ int main ( int argc, char *argv[] ){
                 break;
             case 'h':
                 fprintf(stdout, 
-"zmq-journal-gatewayd-client -- receiving logs from zmq-journal-gatewayd over the network\n\n\
-Usage: zmq-journal-gatewayd-client [--help] [--socket] [--since] [--until]\n\
+"journal-gateway-zmtp-sink -- receiving logs from journal-gateway-zmtp-source over the network\n\n\
+Usage: journal-gateway-zmtp-sink   [--help] [--socket] [--since] [--until]\n\
                                    [--since_cursor] [--until_cursor] [--at_most]\n\
                                    [--format] [--follow] [--reverse] [--filter]\n\n\
 \t--help \t\twill show this\n\
-\t--socket \trequires a socket (must be usable by ZeroMQ) to connect to zmq-journal-gatewayd;\n\
+\t--socket \trequires a socket (must be usable by ZeroMQ) to bind on;\n\
 \t\t\tdefault is \"tcp://localhost:5555\"\n\
 \t--since \trequires a timestamp with a format like \"2014-10-01 18:00:00\"\n\
 \t--until \tsee --since\n\
@@ -288,12 +288,13 @@ Usage: zmq-journal-gatewayd-client [--help] [--socket] [--since] [--until]\n\
 \t--at_most \trequires a positive integer N, at most N logs will be sent\n\
 \t--format \trequires a format \"export\" or \"plain\", default is \"export\"\n\
 \t--follow \tlike 'journalctl -f', follows the remote journal\n\
+\t--listen \tthe sink waits indefinitely for incomming messages from sources\n\
 \t--reverse \treverses the log stream such that newer logs will be sent first\n\
 \t--filter \trequires input of the form e.g. \"[[\\\"FILTER_1\\\", \\\"FILTER_2\\\"], [\\\"FILTER_3\\\"]]\"\n\
 \t\t\tthis example reprensents the boolean formula \"(FILTER_1 OR FILTER_2) AND (FILTER_3)\"\n\
 \t\t\twhereas the content of FILTER_N is matched against the contents of the logs;\n\
 \t\t\tExample: --filter [[\\\"PRIORITY=3\\\"]] only shows logs with exactly priority 3 \n\n\
-The client is used to connect to zmq-journal-gatewayd via the '--socket' option.\n"
+The sink is used to wait for incomming messages from journal-gateway-zmtp-source via the '--socket' option.\n"
                 );
                 return 0;
             case 0:     /* getopt_long() set a variable, just keep going */
