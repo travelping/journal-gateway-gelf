@@ -20,7 +20,7 @@
 */
 
 /*
- * 'zmq-journal-gatewayd' is a logging gateway for systemd's journald. It 
+ * 'journal-gateway-zmtp' is a logging gateway for systemd's journald. It 
  * extracts logs from the journal according to given conditions and sends them
  * to a sink which requested the logs via a json-object. This object is sent
  * as a string. As transport ZeroMQ is used. Since the gateway works straight 
@@ -64,28 +64,22 @@
 #include <string.h>
 #include <alloca.h>
 #include <assert.h>
-#include <time.h>
 #include <systemd/sd-journal.h>
 #include <systemd/sd-id128.h>
 #include <inttypes.h>
 #define __USE_GNU 1
+#include <time.h>
 #include <signal.h>
 #include <stdint.h>
 
-#include "zmq-journal-gatewayd.h"
+#include "journal-gateway-zmtp.h"
 
 /* signal handler function, can be used to interrupt the gateway via keystroke */
 static bool active = true;
 void stop_gateway(int dummy) {
-    printf("DBG: stop handler called\n");
     sd_journal_print(LOG_INFO, "stopping the gateway...");
     active = false; // stop the gateway
 }
-
-typedef struct Connection {
-    zframe_t *client_ID;
-    zframe_t *handler_ID;
-}Connection;
 
 char *get_arg_string(json_t *json_args, char *key){
     json_t *json_string = json_object_get(json_args, key);
@@ -186,9 +180,9 @@ uint64_t get_arg_date(json_t *json_args, char *key){
         struct tm tm;
         time_t t;
         char *ptr = strtok(string_cpy, "T.");
-        strptime(ptr, "%Y-%m-%d", &tm);
+        strptime_l(ptr, "%Y-%m-%d", &tm, 0);
         ptr = strtok(NULL, "T.");
-        strptime(ptr, "%H:%M:%S", &tm);
+        strptime_l(ptr, "%H:%M:%S", &tm, 0);
         tm.tm_isdst = -1;
 
         t = mktime(&tm) * 1000000;      // this time needs to be adjusted by 1000000 to fit the journal time
@@ -198,14 +192,6 @@ uint64_t get_arg_date(json_t *json_args, char *key){
     else{
         return -1;
     }
-}
-
-/* represents a connection between client and handler */
-void Connection_destruct (void *_connection){
-    Connection *connection = (Connection *) _connection;
-    zframe_destroy( &(connection->handler_ID) );
-    zframe_destroy ( &(connection->client_ID) );
-    free( connection ) ;
 }
 
 /* fill a RequestMeta structure with the information from the query_string */
@@ -345,7 +331,7 @@ char *get_entry_string(sd_journal *j, RequestMeta *args, char** entry_string, si
         free(cursor);
         *entry_string = END;
         *entry_string_size = strlen(END);
-        return;
+        return NULL;
     }
 
     /* until now the prefixes for the meta information are missing */
@@ -408,10 +394,11 @@ char *get_entry_string(sd_journal *j, RequestMeta *args, char** entry_string, si
         *entry_string = ERROR;
         *entry_string_size = strlen(ERROR);
     }
-    return;
+    return NULL;
 }
 
 /* for measuring performance of the gateway */
+#ifdef BENCHMARK
 void benchmark( uint64_t initial_time, int log_counter ) {
     uint64_t current_time = zclock_time ();
     uint64_t time_diff_sec = (current_time - initial_time)/1000;
@@ -419,6 +406,7 @@ void benchmark( uint64_t initial_time, int log_counter ) {
     /* use this only when you are certain not to produce floating point exceptions :D */
     //sd_journal_print(LOG_DEBUG, "sent %d logs in %d seconds ( %d logs/sec )\n", log_counter, time_diff_sec, log_rate_sec);
 }
+#endif
 
 void send_flag_wrapper (sd_journal *j, RequestMeta *args, void *socket, zctx_t *ctx, const char *message, char *flag) {
     sd_journal_print(LOG_DEBUG, message);
@@ -455,9 +443,6 @@ static void *handler_routine (void *_args) {
     
     adjust_journal(args, j);
 
-    uint64_t heartbeat_at = zclock_time () + HANDLER_HEARTBEAT_INTERVAL;
-    uint64_t initial_time = zclock_time ();
-    int log_counter = 0;
     int loop_counter = args->at_most;
 
     while (loop_counter > 0 || args->at_most == -1) {
@@ -553,20 +538,20 @@ int main (int argc, char *argv[]){
                 break;
             case 'h':
                 fprintf(stdout, 
-"zmq-journal-gatewayd -- sending logs from systemd's journal over the network\n\
-Usage: zmq-journal-gatewayd [--help] [--socket]\n\n\
+"journal-gateway-zmtp-source -- sending logs from systemd's journal over the network\n\
+Usage: journal-gateway-zmtp-source [--help] [--socket]\n\n\
 \t--help \t\twill show this\n\
-\t--socket \trequires a socket (must be usable by ZeroMQ), default is \"tcp://*:5555\"\n\n\
-The zmq-journal-gatewayd-client can connect to the given socket.\n"
+\t--socket \trequires a socket (must be usable by ZeroMQ) to connect to journal-gateway-zmtp-sink\n\n\
+The journal-gateway-zmtp-sink has to expose the given socket.\n"
                 );
-                return;
+                return 0;
             case 0:     /* getopt_long() set a variable, just keep going */
                 break;
             case ':':   /* missing option argument */
-                fprintf(stderr, "%s: option `-%c' requires an argument\n", argv[0], optarg);
-                return;
+                fprintf(stderr, "%s: option `-%s' requires an argument\n", argv[0], optarg);
+                return 0;
             default:    /* invalid option */
-                return;
+                return 0;
         }
     } 
 
@@ -597,9 +582,7 @@ The zmq-journal-gatewayd-client can connect to the given socket.\n"
     zsocket_bind (backend, BACKEND_SOCKET);
 
     /* for stopping the gateway via keystroke (ctrl-c) */
-    printf("DBG: setting stop handler\n");
-    sighandler_t s = signal(SIGINT, stop_gateway);
-    printf("DBG: return of %p, %p\n", s, SIG_ERR);
+    signal(SIGINT, stop_gateway);
 
     // Setup the poller for frontend and backend
     zmq_pollitem_t items[] = {
@@ -612,7 +595,7 @@ The zmq-journal-gatewayd-client can connect to the given socket.\n"
     zmsg_t *msg;
     RequestMeta *args; 
     while ( active ) {
-        zmq_poll (items, 2, 100);
+        zmq_poll (items, 2, 60000);
 
         if (items[0].revents & ZMQ_POLLIN) {
             msg = zmsg_recv (frontend);
@@ -657,6 +640,8 @@ The zmq-journal-gatewayd-client can connect to the given socket.\n"
             zmsg_send (&response, frontend);
         }
     }
+    /*telling the sink that this source is shutting down*/
+    send_flag(frontend, NULL, LOGOFF );
 
     zctx_destroy (&ctx); 
     sd_journal_print(LOG_INFO, "...gateway stopped");

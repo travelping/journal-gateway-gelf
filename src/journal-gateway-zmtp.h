@@ -9,13 +9,14 @@
 #define HANDLER_HEARTBEAT_INTERVAL 5*1000       // millisecs, defines the time interval in which the gateway will expect a heartbeat
 #define GATEWAY_HWM 0                           // high water mark for the gateway
 #define HANDLER_HWM 0                           // high water mark for the handlers
-#define WAIT_TIMEOUT 100000                     // microsecs, how long to wait in 'follow mode' when there is no new log; 
+#define WAIT_TIMEOUT 60*60*1000*1000            // microsecs, how long to wait in 'follow mode' when there is no new log; 
                                                 // must be at least HANDLER_HEARTBEAT_INTERVAL since the gateway is not able 
                                                 // to answer heartbeats in time when not.
+                                                // default: 1 hour
 
 
-#define TARGET_ADDRESS_ENV "TARGET_ADDR"
-#define REMOTE_JOURNAL_DIRECTORY "JOURNAL_DIR"
+#define TARGET_ADDRESS_ENV "JOURNAL_REMOTE_TARGET"
+#define REMOTE_JOURNAL_DIRECTORY "JOURNAL_REMOTE_DIR"
 
 /* definitions for internal communication between gateway and client */
 #define READY "\001"
@@ -25,6 +26,7 @@
 #define TIMEOUT "\005"
 #define STOP "\006"
 #define LOGON "\007"
+#define LOGOFF "\010"
 
 #define HEARTBEATING 0                          // set to '1' if should always be active
 // #define DEFAULT_CLIENT_SOCKET "tcp://localhost:5555"    // the socket the client should connect to
