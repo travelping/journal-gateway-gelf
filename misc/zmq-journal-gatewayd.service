@@ -1,5 +1,5 @@
 [Unit]
-Description=A ZeroMQ logging gateway for Journald.
+Description=A ZeroMQ logging gateway for Journald. This service represents the source.
 
 [Service]
 EnvironmentFile=/etc/zmq-journal-gatewayd.conf
