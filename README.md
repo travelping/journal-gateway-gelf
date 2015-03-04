@@ -103,7 +103,7 @@ This way the gateway can access this journal files and will forward them to the 
 Installing the gateway will also install a service file to execute the gateway as a systemd unit:
 
 ```bash
-systemctl start zmq-journal-gatewayd    # connects by default to "tcp://*:5555"
+systemctl start zmq-journal-gatewayd    # connects by default to "tcp://127.0.0.1:5555"
 ```
 
 If you need other sockets you can write a configuration file for the service:
