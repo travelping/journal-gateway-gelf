@@ -5,44 +5,43 @@ A ZeroMQ gateway for sending logs from systemd's journald over the network and a
 
 Logs are stored in a journalfile, separated for each source.
 
-Planned mode of Operation
+Mode of Operation
 -----------------
-The following is the planned operation mode of the gateway.
 
-      +----------------+
-      |    journald    |
-      |                |
-      |                |+------------+
-      |                |             |
-      |                |             |syslog
-      +----------------+             |live forwarding
-      +-----+ |                      |udp:514
-      |file | |                      |udp:broadcast
-      +-----+ | journal_api          |
-              |                      |
-              v                      v
-      +----------------+ syslog  +------------+
-      |   "gateway"    |-------->| SYSLOG     |
-      |                |         +------------+
-      |    acts as     |
-      |    journal     | GELF    +------------+
-      |    client      |-------->| GRAYLOG2   |
-      |                |         +------------+
-      |                |                                         +--------------+
-      |                | HTTP    +---------------------------+   |   journald   |
-      |                |-------->| HTTP |     journald-remote|-->|              |
-      |                |         +---------------------------+   |              |
-      |                |                                         |              |
-      |                | ZMTP    +------+    +---------------+   |              |
-      |                |-------->| ZMTP |--->|"gateway-sink" |-->|              |
-      |                |         +------+    |uses jrd-remote|   |              |
-      |                |                     +---------------+   |              |
-      |                |                                         |              |
-      +----------------+                                         +--------------+
-                                                                 +-----+  +-----+
-                                                                 |file |  |file |
-                                                                 +-----+  +-----+
-The current state only supports forwarding via ZMTP.
+
+          +----------------+                                                         
+          |    journald    |                                                         
+          |                |                                                         
+          |                |                                                         
+          |                |                                                         
+          |                |                                                         
+          +-------+--------+                                                         
+          +-----+ |                                                                  
+          |file | |                                                                  
+          +-----+ | journal_api                                                      
+                  |                                                                  
+                  |                                                                  
+          +-------+--------+                                                         
+          |"gateway-source"|                                                         
+          |                |                                                         
+          |    acts as     |                                                         
+          |    journal     |                                                         
+          |    client      |                                                         
+          |                |                                                         
+          |                |                                         +--------------+
+          |                |                                         |   journald   |
+          |                |                                         |              |
+          |                |                                         |              |
+          |                |                                         |              |
+          |                | ZMTP    +------+    +--------+------+   |              |
+          |                +---------+ ZMTP +----+"gateway|sink" +---+              |
+          |                |         +------+    |uses jrd|remote|   |              |
+          |                |                     +--------+------+   |              |
+          |                |                                         |              |
+          +----------------+                                         +-----+--+-----+
+                                                                     +-----+  +-----+
+                                                                     |file |  |file |
+                                                                     +-----+  +-----+
 
 Installation
 ------------
@@ -53,19 +52,14 @@ You will need [ZeroMQ](http://zeromq.org/intro:get-the-software) (recomended ver
 yum install jansson jansson-devel systemd-devel
 ```
 
-for jansson and systemd. To install ZMQ and CZMQ follow the instructions on  the linked sites.
+for jansson and systemd. To install ZMQ and CZMQ follow the instructions on the linked sites.
 
 
 Then just execute (in the journal-gateway-zmtp directory):
 
 ```bash
 make              # you can also just build the gateway or the client 
-                  # with 'make gateway' or 'make client' 
-
-sudo make install	# puts the binaries to /usr/bin; 
-                  # 'make source' or 'make sink' is also
-                  # possible
-sudo ldconfig
+                  # with 'make source' or 'make sink' 
 ```
 
 Usage
@@ -105,7 +99,7 @@ systemctl start journal-gateway-zmtp-source    # connects by default to "tcp://1
 ```
 
 If you need other sockets you can write a configuration file for the service:
-The service looks for a configuration file named "zmq_gateway.conf" in the directory "~/conf". You can change the socket there (this only has an effect, if you execute the gateway as a systemd unit).
+The service looks for a configuration file named "zmq_gateway_source.conf" in the directory "~/conf". You can change the socket there (this only has an effect, if you execute the gateway as a systemd unit).
 
 If you want to start the gateway without using systemd, you can type
 ```bash
