@@ -417,6 +417,9 @@ void send_flag_wrapper (sd_journal *j, RequestMeta *args, void *socket, zctx_t *
 }
 
 static void *handler_routine (void *_args) {
+    /* for stopping the gateway via keystroke (ctrl-c) */
+    signal(SIGINT, stop_gateway);
+
     RequestMeta *args = (RequestMeta *) _args;
     zctx_t *ctx = zctx_new ();
     void *query_handler = zsocket_new (ctx, ZMQ_DEALER);
