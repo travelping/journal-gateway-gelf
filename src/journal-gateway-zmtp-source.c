@@ -624,13 +624,7 @@ The journal-gateway-zmtp-sink has to expose the given socket.\n"
             zframe_t *handler_response = zmsg_last (response);
 
             char *handler_response_string = zframe_strdup (handler_response);
-
-            /* the handler ID is inserted in the connection struct when he answers the first time */
-            //if( lookup->handler_ID == NULL ){
-                //lookup->handler_ID = handler_ID;
-            //}
-            //else
-				zframe_destroy (&handler_ID);
+			zframe_destroy (&handler_ID);
 
             /* case handler ENDs or STOPs the query, regulary or because of error (e.g. missing heartbeat) */
             if( strcmp( handler_response_string, END ) == 0 
@@ -644,7 +638,7 @@ The journal-gateway-zmtp-sink has to expose the given socket.\n"
         }
     }
     /*telling the sink that this source is shutting down*/
-    send_flag(frontend, NULL, LOGOFF );
+    send_flag(frontend, NULL, LOGOFF);
 
     zctx_destroy (&ctx); 
     sd_journal_print(LOG_INFO, "...gateway stopped");
