@@ -71,6 +71,7 @@
 #include <time.h>
 #include <signal.h>
 #include <stdint.h>
+#include <errno.h>
 
 #include "journal-gateway-zmtp.h"
 
@@ -79,6 +80,15 @@ static bool active = true;
 void stop_gateway(int dummy) {
     sd_journal_print(LOG_INFO, "stopping the gateway...");
     active = false; // stop the gateway
+}
+
+static void s_catch_signals (){
+    struct sigaction action;
+    action.sa_handler = stop_gateway;
+    action.sa_flags = 0;
+    sigemptyset (&action.sa_mask);
+    sigaction(SIGINT, &action, NULL);
+    sigaction(SIGTERM, &action, NULL);
 }
 
 char *get_arg_string(json_t *json_args, char *key){
@@ -417,9 +427,6 @@ void send_flag_wrapper (sd_journal *j, RequestMeta *args, void *socket, zctx_t *
 }
 
 static void *handler_routine (void *_args) {
-    /* for stopping the gateway via keystroke (ctrl-c) */
-    signal(SIGINT, stop_gateway);
-
     RequestMeta *args = (RequestMeta *) _args;
     zctx_t *ctx = zctx_new ();
     void *query_handler = zsocket_new (ctx, ZMQ_DEALER);
@@ -562,6 +569,11 @@ The journal-gateway-zmtp-sink has to expose the given socket.\n"
 
     zctx_t *ctx = zctx_new ();
 
+    // /* for stopping the gateway via keystroke (ctrl-c) */
+    s_catch_signals();
+    // signal(SIGINT, stop_gateway);
+    // signal(SIGUSR1, bar);
+
     // Socket to talk to clients
     void *frontend = zsocket_new (ctx, ZMQ_DEALER);
     assert(frontend);
@@ -584,9 +596,6 @@ The journal-gateway-zmtp-sink has to expose the given socket.\n"
     //zsocket_set_rcvhwm (backend, GATEWAY_HWM);
     zsocket_bind (backend, BACKEND_SOCKET);
 
-    /* for stopping the gateway via keystroke (ctrl-c) */
-    signal(SIGINT, stop_gateway);
-
     // Setup the poller for frontend and backend
     zmq_pollitem_t items[] = {
         {frontend, 0, ZMQ_POLLIN, 0},
@@ -597,8 +606,20 @@ The journal-gateway-zmtp-sink has to expose the given socket.\n"
 
     zmsg_t *msg;
     RequestMeta *args; 
+    int rc;
     while ( active ) {
-        zmq_poll (items, 2, 60000);
+        rc=zmq_poll (items, 2, 60000);
+
+        // polled unexpected item or got interupted:
+        if ( rc==-1 ){
+            switch(errno){
+                // poll received a signal
+                case EINTR: 
+                    stop_gateway(0);
+                    break;
+                default: sd_journal_print(LOG_INFO, "Faulty message received");;
+            }
+        }
 
         if (items[0].revents & ZMQ_POLLIN) {
             msg = zmsg_recv (frontend);

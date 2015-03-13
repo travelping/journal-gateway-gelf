@@ -349,10 +349,6 @@ The sink is used to wait for incomming messages from journal-gateway-zmtp-source
     /* receive logs, initiate connections to new sources, respond to heartbeats */
     while ( active ){
         rc=zmq_poll (items, 1, 60000);
-        if( rc==-1 ){
-            //some error occured
-            break;
-        }
         if(items[0].revents & ZMQ_POLLIN){
             response = zmsg_recv(client);
             zframe_t *client_ID = zmsg_pop (response);
