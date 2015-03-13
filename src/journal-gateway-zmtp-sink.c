@@ -6,10 +6,10 @@
  * the rights to use, copy, modify, merge, publish, distribute, sublicense,
  * and/or sell copies of the Software, and to permit persons to whom the
  * Software is furnished to do so, subject to the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be included in
  * all copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -34,7 +34,7 @@ static zctx_t *ctx;
 static void *client;
 uint64_t initial_time;
 int log_counter = 0;
-int heartbeating = HEARTBEATING; 
+int heartbeating = HEARTBEATING;
 
 /* cli arguments */
 int     reverse=0, at_most=-1, follow=0, listening=0;
@@ -101,13 +101,13 @@ char *build_query_string(){
         free(json_since);
     }
     char* json_until = make_json_timestamp(until_timestamp);
-    if (json_until != NULL) { 
+    if (json_until != NULL) {
         json_object_set_new(query, "until_timestamp", json_string(json_until));
         free(json_until);
     }
     if (since_cursor != NULL) json_object_set_new(query, "since_cursor", json_string(since_cursor));
     if (until_cursor != NULL) json_object_set_new(query, "until_cursor", json_string(until_cursor));
-    if (filter != NULL){ 
+    if (filter != NULL){
         json_t *json_fiter = json_loads(filter, JSON_REJECT_DUPLICATES, NULL);
         json_object_set_new(query, "field_matches", json_fiter);
     }
@@ -121,7 +121,7 @@ void benchmark(uint64_t initial_time, int log_counter) {
     uint64_t current_time = zclock_time ();
     uint64_t time_diff_sec = (current_time - initial_time)/1000;
     uint64_t log_rate_sec = log_counter / time_diff_sec;
-    printf("<< sent %d logs in %"PRIu64" seconds ( %" PRIu64 " logs/sec ) >>\n", 
+    printf("<< sent %d logs in %"PRIu64" seconds ( %" PRIu64 " logs/sec ) >>\n",
         log_counter, time_diff_sec, log_rate_sec);
 }
 
@@ -138,13 +138,13 @@ void stop_handler(int dummy) {
         rc = zmq_poll (items, 1, 1000 * ZMQ_POLL_MSEC);
         if ( rc == 0 ) break;
         else{
-            if (frame_string != NULL) 
+            if (frame_string != NULL)
                 free(frame_string);
             frame_string = zstr_recv(client);
             log_counter++;
         }
     }while( strcmp( frame_string, STOP ) != 0 );
-    if (frame_string != NULL) 
+    if (frame_string != NULL)
         free(frame_string);
 
     /* can be used for benchmarking the client */
@@ -160,7 +160,7 @@ int response_handler(zframe_t* cid, zmsg_t *response, FILE *sjr){
     void *frame_data;
     size_t frame_size;
     int more;
-    int ret = 0; 
+    int ret = 0;
     char* client_ID = zframe_strhex(cid);
 
     do{
@@ -279,7 +279,7 @@ int main ( int argc, char *argv[] ){
                 listening = 1;
                 break;
             case 'h':
-                fprintf(stdout, 
+                fprintf(stdout,
 "journal-gateway-zmtp-sink -- receiving logs from journal-gateway-zmtp-source over the network\n\n\
 Usage: journal-gateway-zmtp-sink   [--help] [--socket] [--since] [--until]\n\
                                    [--since_cursor] [--until_cursor] [--at_most]\n\
@@ -311,7 +311,7 @@ The sink is used to wait for incomming messages from journal-gateway-zmtp-source
             default:    /* invalid option */
                 return 0;
         }
-    } 
+    }
 
     /* ensure existence of a machine id */
     check_machine_id();
