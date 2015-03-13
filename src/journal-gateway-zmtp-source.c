@@ -504,7 +504,7 @@ static void *handler_routine (void *_args) {
                 zmsg_send (&entry_msg, query_handler);
             }
         }
-        /* end of journal and 'follow' active? => wait some time */
+        /* end of journal and 'follow' or 'listen' active? => wait indefinitely */
         else if ( rc == 0 && (args->follow || args->listening) ){
             sd_journal_wait( j, (uint64_t) -1 );
         }
@@ -617,7 +617,7 @@ The journal-gateway-zmtp-sink has to expose the given socket.\n"
                 case EINTR: 
                     stop_gateway(0);
                     break;
-                default: sd_journal_print(LOG_INFO, "Faulty message received");;
+                default: sd_journal_print(LOG_INFO, "Faulty message received");
             }
         }
 
@@ -634,7 +634,6 @@ The journal-gateway-zmtp-sink has to expose the given socket.\n"
                     sd_journal_print(LOG_INFO, "got invalid query");
                     send_flag(frontend, NULL, ERROR );
                 }
-            /* second case: heartbeat or stop sent by client */
             zmsg_destroy ( &msg );
         }
 

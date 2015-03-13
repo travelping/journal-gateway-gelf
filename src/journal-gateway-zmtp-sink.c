@@ -146,11 +146,6 @@ void stop_handler(int dummy) {
     }while( strcmp( frame_string, STOP ) != 0 );
     if (frame_string != NULL)
         free(frame_string);
-
-    /* can be used for benchmarking the client */
-    //benchmark(initial_time, log_counter);
-
-    /* stop the client */
     active = false;
 }
 
