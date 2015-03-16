@@ -225,7 +225,6 @@ int main ( int argc, char *argv[] ){
         { "follow",         no_argument,            NULL,         'g' },
         { "help",           no_argument,            NULL,         'h' },
         { "filter",         required_argument,      NULL,         'i' },
-        { "socket",         required_argument,      NULL,         's' },
         { "listen",         no_argument,            NULL,         'j' },
         { 0, 0, 0, 0 }
     };
@@ -235,6 +234,11 @@ int main ( int argc, char *argv[] ){
     const char *remote_journal_directory = getenv(REMOTE_JOURNAL_DIRECTORY);
     if (!(remote_journal_directory)) {
         fprintf(stderr, "%s not specified.\n", REMOTE_JOURNAL_DIRECTORY);
+        exit(1);
+    }
+    client_socket_address = getenv(EXPOSED_SOCKET);
+    if (!(client_socket_address)) {
+        fprintf(stderr, "%s not specified.\n", EXPOSED_SOCKET);
         exit(1);
     }
     const char sjr_cmd_format[] = "/lib/systemd/systemd-journal-remote -o %s/%s.journal -";
@@ -257,9 +261,6 @@ int main ( int argc, char *argv[] ){
             case 'e':
                 until_cursor = optarg;
                 break;
-            case 's':
-                client_socket_address = optarg;
-                break;
             case 'f':
                 format = optarg;
                 break;
@@ -276,12 +277,10 @@ int main ( int argc, char *argv[] ){
             case 'h':
                 fprintf(stdout,
 "journal-gateway-zmtp-sink -- receiving logs from journal-gateway-zmtp-source over the network\n\n\
-Usage: journal-gateway-zmtp-sink   [--help] [--socket] [--since] [--until]\n\
+Usage: journal-gateway-zmtp-sink   [--help] [--since] [--until]\n\
                                    [--since_cursor] [--until_cursor] [--at_most]\n\
                                    [--format] [--follow] [--reverse] [--filter]\n\n\
 \t--help \t\twill show this\n\
-\t--socket \trequires a socket (must be usable by ZeroMQ) to bind on;\n\
-\t\t\tdefault is \"tcp://localhost:5555\"\n\
 \t--since \trequires a timestamp with a format like \"2014-10-01 18:00:00\"\n\
 \t--until \tsee --since\n\
 \t--since_cursor \trequires a log cursor, see e.g. 'journalctl -o export'\n\
@@ -295,7 +294,9 @@ Usage: journal-gateway-zmtp-sink   [--help] [--socket] [--since] [--until]\n\
 \t\t\tthis example reprensents the boolean formula \"(FILTER_1 OR FILTER_2) AND (FILTER_3)\"\n\
 \t\t\twhereas the content of FILTER_N is matched against the contents of the logs;\n\
 \t\t\tExample: --filter [[\\\"PRIORITY=3\\\"]] only shows logs with exactly priority 3 \n\n\
-The sink is used to wait for incomming messages from journal-gateway-zmtp-source via the '--socket' option.\n"
+The sink is used to wait for incomming messages from journal-gateway-zmtp-source via exposing a socket.\n\
+Set this socket via setting EXPOSED_SOCKET environment variable (must be usable by ZeroMQ).\n\
+Default is tcp://localhost:5555\n\n"
                 );
                 return 0;
             case 0:     /* getopt_long() set a variable, just keep going */

@@ -533,7 +533,6 @@ static void *handler_routine (void *_args) {
 int main (int argc, char *argv[]){
 
     struct option longopts[] = {
-        { "socket",     required_argument,      NULL,         's' },
         { "help",       no_argument,            NULL,         'h' },
         { 0, 0, 0, 0 }
     };
@@ -543,16 +542,13 @@ int main (int argc, char *argv[]){
     int c;
     while((c = getopt_long(argc, argv, "s:", longopts, NULL)) != -1) {
         switch (c) {
-            case 's':
-                gateway_socket_address = optarg;
-                break;
             case 'h':
                 fprintf(stdout, 
 "journal-gateway-zmtp-source -- sending logs from systemd's journal over the network\n\
-Usage: journal-gateway-zmtp-source [--help] [--socket]\n\n\
-\t--help \t\twill show this\n\
-\t--socket \trequires a socket (must be usable by ZeroMQ) to connect to journal-gateway-zmtp-sink\n\n\
-The journal-gateway-zmtp-sink has to expose the given socket.\n"
+Usage: journal-gateway-zmtp-source [--help]\n\n\
+\t--help \t\twill show this\n\n\
+To set a socket to connect to a gateway sink set the TARGET_ADDRESS_ENV (must be usable by ZeroMQ)\n\
+The journal-gateway-zmtp-sink has to expose the given socket.\n\n"
                 );
                 return 0;
             case 0:     /* getopt_long() set a variable, just keep going */
