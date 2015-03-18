@@ -5,6 +5,37 @@ A ZeroMQ gateway for sending logs from systemd's journald over the network and a
 
 Logs are stored in a journalfile, separated for each source.
 
+Configuration while Running
+---------------------------
+
+== Enhanced Control for the ZMTP-Journal-Gateway
+
+To enable configuration of both sink and source during runtime the following API and connection is going to be implemented.
+
+----
++--------------+     ZMTP connection                     +------------+              
+|gateway source+--------------------------------->)------+gateway sink|              
++-----+--------+     for control communication           +-+----------+              
+      |              between source and sink               |                         
+      |API                                                 |API                      
+      |        +----------+                                |      +----------------+ 
+      +--------+set_target|                                +------+set_exposed_port| 
+      |        +----------+                                |      +----------------+ 
+      |                                                    |                         
+      |        +----------+                                |      +-----------------+
+      +--------+set_filter|                                +------+set_log_directory|
+      |        +----------+                                |      +-----------------+
+      |                                                    |                         
+      |        +-------------+                             |      +------------+     
+      +--------+set_sourcelog|                             +------+show_sources|     
+               +-------------+                             |      +------------+     
+                                                           |                         
+                                                           |      +----------+       
+                                                           +------+set_filter|       
+                                                                  +----------+       
+----
+A more precise description of the API is coming along the road.
+
 Mode of Operation
 -----------------
 
