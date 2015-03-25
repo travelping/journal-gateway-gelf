@@ -54,6 +54,12 @@ time_t get_clock_time(){
     return time.tv_sec;
 }
 
+/* this checks whether a machine id exists */
+void check_machine_id(){
+    sd_id128_t ret;
+    assert ( sd_id128_get_machine(&ret) == 0 );
+}
+
 /* removes item from hash */
 void con_hash_delete(Connection *hash, Connection *item){
     HASH_DEL(hash, item);
@@ -306,6 +312,9 @@ The sink is used to wait for incomming messages from journal-gateway-zmtp-source
                 return 0;
         }
     } 
+
+    /* ensure existence of a machine id */
+    check_machine_id();
 
     /* initial setup */
     ctx = zctx_new ();
