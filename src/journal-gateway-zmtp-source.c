@@ -6,10 +6,10 @@
  * the rights to use, copy, modify, merge, publish, distribute, sublicense,
  * and/or sell copies of the Software, and to permit persons to whom the
  * Software is furnished to do so, subject to the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be included in
  * all copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -20,10 +20,10 @@
 */
 
 /*
- * 'journal-gateway-zmtp' is a logging gateway for systemd's journald. It 
+ * 'journal-gateway-zmtp' is a logging gateway for systemd's journald. It
  * extracts logs from the journal according to given conditions and sends them
  * to a sink which requested the logs via a json-object. This object is sent
- * as a string. As transport ZeroMQ is used. Since the gateway works straight 
+ * as a string. As transport ZeroMQ is used. Since the gateway works straight
  * forward with ZeroMQ sockets you can in general choose how to communicate
  * between source and sink in the way you can choose this for ZeroMQ sockets.
  *
@@ -31,7 +31,7 @@
  *
  *  " { \"since_timestamp\" : \"2014-04-29T13:23:25Z\" , \"reverse\" : true } "
  *
- * The source would then send all logs since the given date until now. Logs are 
+ * The source would then send all logs since the given date until now. Logs are
  * by default send by newest first, unless you activate the 'reverse' attribute.
  *
  * The gateway can work on (in theory) arbitrary many requests in parallel. The
@@ -39,24 +39,24 @@
  *
  * 0.   The source sends a message ('LOGON') to establish the connection.
  * 1.   The sink sends a query string which represents a (valid) json object.
- * 2.   the source sends a message ('READY') to acknowledge the query as a first 
- *      response. 
+ * 2.   the source sends a message ('READY') to acknowledge the query as a first
+ *      response.
  * 3.   After this initial response the source will start sending logs according
- *      to the given restrictions/conditions. Every log is sent in exactly one 
- *      zmq message. Possible restrictions/conditions can be seen in the 
+ *      to the given restrictions/conditions. Every log is sent in exactly one
+ *      zmq message. Possible restrictions/conditions can be seen in the
  *      function definition of 'parse_json'.
  * 4.   If the query response was successful the source will close the request
  *      with an additional message ('END').
- *      If the query response was not (fully) successful the source will send 
+ *      If the query response was not (fully) successful the source will send
  *      an error message ('ERROR').
  *      Another possibility regards a timeout due to heartbeating:
  * 5.   The source will always accept heartbeating messages ('HEARTBEAT') from
  *      a sink but in general it is optional. Only if the follow functionality
- *      is used the source will expect a heartbeating by the sink. If the 
+ *      is used the source will expect a heartbeating by the sink. If the
  *      sink misses a heartbeat the source will respond with a 'TIMEOUT'
- *      message and close the response stream. 
- * 6.   The sink can stop the response stream of the source by sending a 'STOP' 
- *      message to the source. The source will respond with a 'STOP' message 
+ *      message and close the response stream.
+ * 6.   The sink can stop the response stream of the source by sending a 'STOP'
+ *      message to the source. The source will respond with a 'STOP' message
  *      and close the response stream.
  */
 
@@ -108,7 +108,7 @@ void set_matches(json_t *json_args, char *key, RequestMeta *args){
     json_t *json_array = json_object_get(json_args, key);
     if( json_array != NULL ){
 
-        /*  
+        /*
             The source accepts matches in form of boolean formulas.
             These formulas are represented in KNF such that every clause
             is represented as one array. The whole boolean formula is
@@ -117,11 +117,11 @@ void set_matches(json_t *json_args, char *key, RequestMeta *args){
             (PRIORITY=0 OR PRIORITY=1) AND (CODE_FILE=my_file)
 
             is represented through:
-            
+
             [["PRIORITY=0", "PRIORITY=1"], ["CODE_FILE=my_file"]]
         */
 
-        size_t n_clauses = json_array_size(json_array);                     // number of clauses 
+        size_t n_clauses = json_array_size(json_array);                     // number of clauses
         void **clauses = (void **) malloc( sizeof(Clause *) * n_clauses );  // array of clauses; the whole boolean formula
 
         size_t index;
@@ -232,7 +232,7 @@ RequestMeta *parse_json(zmsg_t* query_msg){
     args->discrete = get_arg_bool(json_args, "discrete");
     args->boot = get_arg_bool(json_args, "boot");
     args->field = get_arg_string(json_args, "field");
-    set_matches(json_args, "field_matches", args); 
+    set_matches(json_args, "field_matches", args);
     args->reverse = get_arg_bool(json_args, "reverse");
 
     /* there are some dependencies between certain attributes, these can be set here */
@@ -314,7 +314,7 @@ char *get_entry_string(sd_journal *j, RequestMeta *args, char** entry_string, si
     size_t length;
     size_t total_length = 0;
     int counter = 0, i;
-    
+
     /* first get the number of fields to allocate memory */
     SD_JOURNAL_FOREACH_DATA(j, data, length)
         counter++;
@@ -329,13 +329,13 @@ char *get_entry_string(sd_journal *j, RequestMeta *args, char** entry_string, si
     uint64_t monotonic_usec;
     char monotonic_usec_string[65];         // 64 bit +1 for \0
     sd_id128_t boot_id;
-    
+
     sd_journal_get_cursor( j, &cursor );    // needs to be free'd afterwards
     sd_journal_get_realtime_usec( j, &realtime_usec );
     sprintf ( realtime_usec_string, "%" PRId64 , realtime_usec );
     sd_journal_get_monotonic_usec( j, &monotonic_usec, &boot_id);
     sprintf ( monotonic_usec_string, "%" PRId64 , monotonic_usec );
-    
+
     /* check against args if this entry should be sent */
     if (check_args( j, args, realtime_usec, monotonic_usec) == 1){
         free(cursor);
@@ -350,7 +350,7 @@ char *get_entry_string(sd_journal *j, RequestMeta *args, char** entry_string, si
     for(i=0; i<3; i++){
         int prefix_len = strlen(meta_prefixes[i]);
         int information_len = strlen(meta_information[i]);
-        entry_fields[i] = (char *) alloca( sizeof(char) * ( prefix_len + information_len ));     
+        entry_fields[i] = (char *) alloca( sizeof(char) * ( prefix_len + information_len ));
         memcpy ( entry_fields[i], (void *) meta_prefixes[i], prefix_len );
         memcpy ( entry_fields[i] + prefix_len, (void *) meta_information[i], information_len );
         entry_fields_len[i] = prefix_len + information_len;
@@ -367,7 +367,7 @@ char *get_entry_string(sd_journal *j, RequestMeta *args, char** entry_string, si
         total_length += length;
 
         /* check if this is a multiline message when export format (default) is chosen */
-        if ((args->format == NULL || strcmp( args->format, "export" ) == 0) 
+        if ((args->format == NULL || strcmp( args->format, "export" ) == 0)
             && memchr(entry_fields[counter], '\n', length) != NULL)
         {
             char *field_name = strtok(entry_fields[counter], "=");
@@ -375,7 +375,7 @@ char *get_entry_string(sd_journal *j, RequestMeta *args, char** entry_string, si
             int new_length = length+8;  // +8 for 64 bit integer
             int64_t new_length64 = length - field_name_len - 1;
 
-            entry_fields[counter] = (char *) alloca( sizeof(char) * new_length ); 
+            entry_fields[counter] = (char *) alloca( sizeof(char) * new_length );
             memcpy (entry_fields[counter], (void *) field_name, field_name_len);
             entry_fields[counter][field_name_len] = '\n';
             memcpy ( entry_fields[counter] + field_name_len + 1, (char *) &new_length64, 8 );
@@ -388,7 +388,7 @@ char *get_entry_string(sd_journal *j, RequestMeta *args, char** entry_string, si
     }
 
     /* the data fields are merged together according to the given output format */
-    if( args->format == NULL || strcmp( args->format, "export" ) == 0 || strcmp( args->format, "plain" ) == 0){  
+    if( args->format == NULL || strcmp( args->format, "export" ) == 0 || strcmp( args->format, "plain" ) == 0){
         *entry_string = (char *) malloc( sizeof(char) * ( total_length + counter )); // counter times '\n'
 		assert(entry_string);
         int p = 0;
@@ -450,7 +450,7 @@ static void *handler_routine (void *_args) {
     /* create and adjust the journal pointer according to the information in args */
     sd_journal *j;
     sd_journal_open(&j, SD_JOURNAL_LOCAL_ONLY);
-    
+
     adjust_journal(args, j);
 
     int loop_counter = args->at_most;
@@ -458,7 +458,7 @@ static void *handler_routine (void *_args) {
     while (loop_counter > 0 || args->at_most == -1) {
 
         loop_counter--;
-        
+
         rc = zmq_poll (items, 1, 0);
         if( rc == -1 ){
             send_flag_wrapper (j, args, query_handler, ctx, "error in zmq poll", ERROR);
@@ -486,7 +486,7 @@ static void *handler_routine (void *_args) {
         if( rc == 1 ){
             size_t entry_string_size;
             char *entry_string;
-            get_entry_string( j, args, &entry_string, &entry_string_size ); 
+            get_entry_string( j, args, &entry_string, &entry_string_size );
             if ( memcmp(entry_string, END, strlen(END)) == 0 ){
                 send_flag_wrapper (j, args, query_handler, ctx, "query finished successfully", END);
                 return NULL;
@@ -543,7 +543,7 @@ int main (int argc, char *argv[]){
     while((c = getopt_long(argc, argv, "s:", longopts, NULL)) != -1) {
         switch (c) {
             case 'h':
-                fprintf(stdout, 
+                fprintf(stdout,
 "journal-gateway-zmtp-source -- sending logs from systemd's journal over the network\n\
 Usage: journal-gateway-zmtp-source [--help]\n\n\
 \t--help \t\twill show this\n\n\
@@ -559,7 +559,7 @@ The journal-gateway-zmtp-sink has to expose the given socket.\n\n"
             default:    /* invalid option */
                 return 0;
         }
-    } 
+    }
 
     sd_journal_print(LOG_INFO, "gateway started...");
 
@@ -601,7 +601,7 @@ The journal-gateway-zmtp-sink has to expose the given socket.\n\n"
     send_flag(frontend, NULL, LOGON );
 
     zmsg_t *msg;
-    RequestMeta *args; 
+    RequestMeta *args;
     int rc;
     while ( active ) {
         rc=zmq_poll (items, 2, 60000);
@@ -610,7 +610,7 @@ The journal-gateway-zmtp-sink has to expose the given socket.\n\n"
         if ( rc==-1 ){
             switch(errno){
                 // poll received a signal
-                case EINTR: 
+                case EINTR:
                     stop_gateway(0);
                     break;
                 default: sd_journal_print(LOG_INFO, "Faulty message received");
@@ -643,9 +643,9 @@ The journal-gateway-zmtp-sink has to expose the given socket.\n\n"
 			zframe_destroy (&handler_ID);
 
             /* case handler ENDs or STOPs the query, regulary or because of error (e.g. missing heartbeat) */
-            if( strcmp( handler_response_string, END ) == 0 
-                    || strcmp( handler_response_string, ERROR ) == 0 
-                    || strcmp( handler_response_string, STOP ) == 0 
+            if( strcmp( handler_response_string, END ) == 0
+                    || strcmp( handler_response_string, ERROR ) == 0
+                    || strcmp( handler_response_string, STOP ) == 0
                     || strcmp( handler_response_string, TIMEOUT ) == 0){
             }
 
@@ -656,7 +656,7 @@ The journal-gateway-zmtp-sink has to expose the given socket.\n\n"
     /*telling the sink that this source is shutting down*/
     send_flag(frontend, NULL, LOGOFF);
 
-    zctx_destroy (&ctx); 
+    zctx_destroy (&ctx);
     sd_journal_print(LOG_INFO, "...gateway stopped");
     return 0;
 }

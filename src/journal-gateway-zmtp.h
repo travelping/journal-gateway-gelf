@@ -9,8 +9,8 @@
 #define HANDLER_HEARTBEAT_INTERVAL 5*1000       // millisecs, defines the time interval in which the gateway will expect a heartbeat
 #define GATEWAY_HWM 0                           // high water mark for the gateway
 #define HANDLER_HWM 0                           // high water mark for the handlers
-#define WAIT_TIMEOUT 60*60*1000*1000            // microsecs, how long to wait in 'follow mode' when there is no new log; 
-                                                // must be at least HANDLER_HEARTBEAT_INTERVAL since the gateway is not able 
+#define WAIT_TIMEOUT 60*60*1000*1000            // microsecs, how long to wait in 'follow mode' when there is no new log;
+                                                // must be at least HANDLER_HEARTBEAT_INTERVAL since the gateway is not able
                                                 // to answer heartbeats in time when not.
                                                 // default: 1 hour
 
@@ -56,7 +56,7 @@ typedef struct RequestMeta {
     void **clauses;         // array of clauses
     size_t n_clauses;
 
-    bool reverse; 
+    bool reverse;
 }RequestMeta;
 
 /* note: is destructed by RequestMeta */
