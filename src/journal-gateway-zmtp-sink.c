@@ -49,6 +49,7 @@ char    *since_timestamp=NULL, *until_timestamp=NULL, *client_socket_address=NUL
 
 typedef struct {
     char            *client_key;
+    zframe_t        *id_frame;
     FILE            *sjr;
     time_t          time_last_message;
     UT_hash_handle  hh; /*requirement for uthash*/
@@ -881,6 +882,7 @@ Default is tcp://localhost:5555\n\n"
                         sizeof(sjr_cmd_format)<sizeof(pathtojournalfile));
                 sprintf (pathtojournalfile, sjr_cmd_format, remote_journal_directory, journalname);
                 lookup->sjr = popen(pathtojournalfile, "w");
+                lookup->id_frame = zframe_dup(client_ID);
                 lookup->client_key=client_key;
                 assert(lookup->sjr);
                 // zhash_insert(connections, client_key, lookup);
