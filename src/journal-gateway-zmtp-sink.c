@@ -228,7 +228,7 @@ int response_handler(zframe_t* cid, zmsg_t *response, FILE *sjr){
         frame_data = zframe_data(frame);
         if( memcmp( frame_data, END, strlen(END) ) == 0 ){
             zframe_destroy (&frame);
-            if (listening) {
+            if (!listening) {
                 ret =  1;
             }
             break;
@@ -241,6 +241,9 @@ int response_handler(zframe_t* cid, zmsg_t *response, FILE *sjr){
         else if( memcmp( frame_data, HEARTBEAT, strlen(HEARTBEAT) ) == 0 ) NULL;
         else if( memcmp( frame_data, TIMEOUT, strlen(TIMEOUT) ) == 0 ) NULL;
         else if( memcmp( frame_data, READY, strlen(READY) ) == 0 ) NULL;
+        else if( memcmp( frame_data, STOP, strlen(STOP) ) == 0 ){
+            NULL;
+        }
         else if( memcmp( frame_data, LOGON, strlen(LOGON) ) == 0 ){
             /* send query as first response */
             char *query_string = build_query_string();
