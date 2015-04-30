@@ -75,8 +75,8 @@
 
 #include "journal-gateway-zmtp.h"
 
-/* signal handler function, can be used to interrupt the gateway via keystroke */
 static bool active = true, working_on_query = false;
+/* signal handler function, can be used to interrupt the gateway via keystroke */
 void stop_gateway(int dummy) {
     UNUSED(dummy);
     sd_journal_print(LOG_INFO, "stopping the gateway...");
