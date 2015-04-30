@@ -26,9 +26,12 @@
 #include <time.h>
 #include <systemd/sd-journal.h>
 #include <systemd/sd-id128.h>
+#include <sys/stat.h>
+#include <errno.h>
 
 #include "uthash/uthash.h"
 #include "journal-gateway-zmtp.h"
+#define KEYDATA(KEY) .key=KEY, .keylen=strlen(KEY)
 
 static zctx_t *ctx;
 static void *client;
@@ -48,6 +51,55 @@ typedef struct {
     UT_hash_handle  hh; /*requirement for uthash*/
 }Connection;
 
+// structures for controlhandling
+
+typedef enum {
+    FT_REVERSE,
+    FT_AT_MOST,
+    FT_SINCE_TIMESTAMP,
+    FT_UNTIL_TIMESTAMP,
+    FT_SINCE_CURSOR,
+    FT_UNTIL_CURSOR,
+    FT_FORMAT,
+    FT_FOLLOW,
+    FT_FILTER,
+    FT_LISTEN,
+    SET_EXPOSED_PORT,
+    SET_LOG_DIRECTORY,
+    SHOW_FILTER,
+    SHOW_SOURCES,
+    CTRL_SND_QUERY,
+    CTRL_SND_STOP,
+    CTRL_SHUTDOWN,
+    SHOW_HELP
+} opcode;
+
+struct Command{
+    opcode id;
+    const char *key;
+    unsigned int keylen;
+};
+
+static struct Command valid_commands[] = {
+    {.id = FT_REVERSE, KEYDATA("reverse")},
+    {.id = FT_AT_MOST, KEYDATA("at_most")},
+    {.id = FT_SINCE_TIMESTAMP, KEYDATA("since_timestamp")},
+    {.id = FT_UNTIL_TIMESTAMP, KEYDATA("until_timestamp")},
+    {.id = FT_SINCE_CURSOR, KEYDATA("since_cursor")},
+    {.id = FT_UNTIL_CURSOR, KEYDATA("until_cursor")},
+    {.id = FT_FORMAT, KEYDATA("format")},
+    {.id = FT_FOLLOW, KEYDATA("follow")},
+    {.id = FT_FILTER, KEYDATA("filter")},
+    {.id = FT_LISTEN, KEYDATA("listen")},
+    {.id = SET_EXPOSED_PORT, KEYDATA("set_exposed_port")},
+    {.id = SET_LOG_DIRECTORY, KEYDATA("set_log_directory")},
+    {.id = SHOW_FILTER, KEYDATA("show_filter")},
+    {.id = SHOW_SOURCES, KEYDATA("show_sources")},
+    {.id = CTRL_SND_QUERY, KEYDATA("send_query")},
+    {.id = CTRL_SND_STOP, KEYDATA("send_stop")},
+    {.id = CTRL_SHUTDOWN, KEYDATA("shutdown")},
+    {.id = SHOW_HELP, KEYDATA("help")}
+};
 time_t get_clock_time(){
     struct timespec time;
     clock_gettime(CLOCK_MONOTONIC, &time);
@@ -210,6 +262,267 @@ int response_handler(zframe_t* cid, zmsg_t *response, FILE *sjr){
     free(client_ID);
 
     return ret;
+}
+
+/* control API */
+
+/* changing the exposed port and signalling all logged on sources about the change */
+int set_exposed_port(int port){
+    int ret = 0;
+    // check for valid port
+    if(port <= 1023 || 65536 <= port){
+        ret = -1;
+        fprintf(stderr, "%s\n", "Port not set, please choose a valid one ( >1023, <65536 )");
+        return ret;
+    }
+
+    // actual change of the port
+    int rc;
+    char *endpoint[256];
+    size_t endpoint_len = sizeof(endpoint);
+    rc = zmq_getsockopt(client, ZMQ_LAST_ENDPOINT, endpoint, &endpoint_len);
+    assert ( rc==0 );
+    rc = zsocket_unbind(client, client_socket_address);
+    if(rc==-1){
+    perror("zsocket_unbind");
+    }
+    assert ( rc==0 );
+    sprintf(client_socket_address, "tcp://127.0.0.1:%d", port);
+    rc = zsocket_bind(client, client_socket_address);
+    assert( rc );
+    sd_journal_print(LOG_INFO, "Changed exposed port to %s", client_socket_address);
+
+    return ret;
+}
+
+/* changing the directory, in which the remote journals are stored*/
+int set_log_directory(char *new_directory){
+    int ret = 0;
+
+    // create specified directory with rwxrw-rw-
+    ret = mkdir(new_directory, 0766);
+    if (ret == -1){
+        switch(errno){
+            case EEXIST:
+                // directory already exists, everythings fine
+                ret = 0; break;
+            default:
+                // some other error occured
+                fprintf(stderr, "Error while creating the directory, errno: %d \n", errno);
+        }
+    }
+    free(remote_journal_directory);
+    remote_journal_directory = new_directory;
+
+    return ret;
+}
+
+/*
+    returns the conected sources as a string, separated by newline
+*/
+void show_sources(char *ret){
+    //todo check for to long output
+    int length = 0;
+    Connection *i, *tmp;
+    HASH_ITER(hh, connections, i, tmp){
+        length += sprintf(ret+length, "%s\n", i->client_key);
+    }
+}
+
+/*
+    returns the set filters as a string, filters are seperated by newline
+    reverse = 0
+    at_most = -1
+    ...
+*/
+void show_filter(char *ret){
+    //todo check for to long output
+    int length = 0;
+    length += sprintf(ret+length, "reverse = %d\n", reverse);
+    length += sprintf(ret+length, "at_most = %d\n", at_most);
+    length += sprintf(ret+length, "since_timestamp = %s\n", since_timestamp);
+    length += sprintf(ret+length, "until_timestamp = %s\n", until_timestamp);
+    length += sprintf(ret+length, "since_cursor = %s\n", since_cursor);
+    length += sprintf(ret+length, "until_cursor = %s\n", until_cursor);
+    length += sprintf(ret+length, "format = %s\n", format);
+    length += sprintf(ret+length, "follow = %d\n", follow);
+    length += sprintf(ret+length, "filter = %s\n", filter);
+    length += sprintf(ret+length, "listen = %d\n", listening);
+}
+
+// shows a help dialogue
+void show_help(){
+    fprintf(stdout,
+"Usage: Type in one of the following commands and \n\
+optional arguments (space separated), confirm your input by pressing enter\n\n\
+\thelp\t\t\twill show this\n\
+\tsince\t\t\trequires a timestamp with a format like \"2014-10-01 18:00:00\"\n\
+\tuntil\t\t\tsee --since\n\
+\tsince_cursor\t\trequires a log cursor, see e.g. 'journalctl -o export'\n\
+\tuntil_cursor\t\tsee --since_cursor\n\
+\tat_most\t\t\trequires a positive integer N, at most N logs will be sent\n\
+\tformat\t\t\trequires a format \"export\" or \"plain\", default is \"export\"\n\
+\tfollow\t\t\tlike 'journalctl -f', follows the remote journal\n\
+\tlisten\t\t\tthe sink waits indefinitely for incomming messages from sources\n\
+\treverse\t\t\treverses the log stream such that newer logs will be sent first\n\
+\tfilter\t\t\trequires input of the form e.g. \"[[\\\"FILTER_1\\\", \\\"FILTER_2\\\"], [\\\"FILTER_3\\\"]]\"\n\
+\t\t\t\tthis example reprensents the boolean formula \"(FILTER_1 OR FILTER_2) AND (FILTER_3)\"\n\
+\t\t\t\twhereas the content of FILTER_N is matched against the contents of the logs;\n\
+\t\t\t\tExample: --filter [[\\\"PRIORITY=3\\\"]] only shows logs with exactly priority 3 \n\
+\tshow_filter\t\tshows the current filters (see above)\n\
+\tset_exposed_port\trequires a valid tcp port\n\
+\tshow_sources\t\tshows the connected sources\n\
+\tshutdown\t\tstops the gateway\
+\n\n"
+    );
+}
+
+void send_query(){
+    char *query_string = build_query_string();
+    zmsg_t *m;
+    zframe_t *queryframe, *cid;
+    Connection *i, *tmp;
+    HASH_ITER(hh, connections, i, tmp){
+        m = zmsg_new(); assert(m);
+        queryframe = zframe_new(query_string, strlen(query_string));
+        assert(queryframe);
+        // duplicate id_frame so it won't be destroyed
+        cid = zframe_dup(i->id_frame);
+        assert(cid);
+        zmsg_push(m, queryframe);
+        zmsg_push(m, cid);
+        zmsg_send (&m, client);
+    }
+    free(query_string);
+}
+
+void send_stop(){
+    char *query_string = build_query_string();
+    zmsg_t *m;
+    zframe_t *queryframe, *cid;
+    Connection *i, *tmp;
+    HASH_ITER(hh, connections, i, tmp){
+        m = zmsg_new(); assert(m);
+        queryframe = zframe_new(STOP, strlen(STOP));
+        assert(queryframe);
+        // duplicate id_frame so it won't be destroyed
+        cid = zframe_dup(i->id_frame);
+        assert(cid);
+        zmsg_push(m, queryframe);
+        zmsg_push(m, cid);
+        zmsg_send (&m, client);
+    }
+    free(query_string);
+}
+
+/*
+    searches for coresponding id to the inserted filter key
+    the id is returned in *result
+    the return value is 1 on success and 0 else
+*/
+int get_command_id_by_key(const char *inp_key, opcode *result){
+    size_t i;
+    for(i = 0; i < sizeof(valid_commands)/sizeof(valid_commands[0]); i++){
+        if(strncmp(inp_key, valid_commands[i].key, valid_commands[i].keylen) == 0){
+            *result = valid_commands[i].id;
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
+// json helper
+
+char* get_arg_string(json_t *arg){
+    return strdup(json_string_value(arg));
+}
+
+int get_arg_int(json_t *arg){
+    int ret = 0;
+    ret = atoi(json_string_value(arg));
+    return ret;
+}
+
+
+/*
+    apply the specified command, encrypted as ID
+    returns 1 on success and 0 else
+*/
+int execute_command(opcode command_id, json_t *command_arg){
+    int port;
+    char *dir, stringh[2048];
+
+    switch (command_id){
+        case FT_REVERSE:
+            reverse = get_arg_int(command_arg);
+            break;
+        case FT_AT_MOST:
+            at_most = get_arg_int(command_arg);
+            break;
+        case FT_SINCE_TIMESTAMP:
+            free(since_timestamp);
+            since_timestamp = get_arg_string(command_arg);
+            break;
+        case FT_UNTIL_TIMESTAMP:
+            free(until_timestamp);
+            until_timestamp = get_arg_string(command_arg);
+            break;
+        case FT_SINCE_CURSOR:
+            free(since_cursor);
+            since_cursor = get_arg_string(command_arg);
+            break;
+        case FT_UNTIL_CURSOR:
+            free(until_cursor);
+            until_cursor = get_arg_string(command_arg);
+            break;
+        case FT_FORMAT:
+            free(format);
+            format = get_arg_string(command_arg);
+            break;
+        case FT_FOLLOW:
+            follow = get_arg_int(command_arg);
+            break;
+        case FT_FILTER:
+            free(filter);
+            filter = get_arg_string(command_arg);
+            break;
+        case FT_LISTEN:
+            listening = get_arg_int(command_arg);
+            break;
+        case SET_EXPOSED_PORT:
+            port = get_arg_int(command_arg);
+            set_exposed_port(port);
+            break;
+        case SET_LOG_DIRECTORY:
+            dir = get_arg_string(command_arg);
+            set_log_directory(dir);
+            break;
+        case SHOW_FILTER:
+            show_filter(&stringh[0]);
+            fprintf(stdout, "Filter: %s\n", stringh);
+            break;
+        case SHOW_SOURCES:
+            show_sources(&stringh[0]);
+            fprintf(stdout, "Sources: %s\n", stringh);
+            break;
+        case SHOW_HELP:
+            show_help();
+            break;
+        case CTRL_SND_QUERY:
+            send_query();
+            break;
+        case CTRL_SND_STOP:
+            send_stop();
+            break;
+        case CTRL_SHUTDOWN:
+            stop_handler(0);
+            break;
+        default:
+            return 0;
+    }
+
+    return 1;
 }
 
 int main ( int argc, char *argv[] ){
