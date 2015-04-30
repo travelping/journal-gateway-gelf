@@ -38,7 +38,6 @@
 static zctx_t *ctx;
 static void *client, *router_control;
 uint64_t initial_time;
-int log_counter = 0;
 int heartbeating = HEARTBEATING;
 
 /* cli arguments */
@@ -172,8 +171,8 @@ char *build_query_string(){
     if (since_cursor != NULL) json_object_set_new(query, "since_cursor", json_string(since_cursor));
     if (until_cursor != NULL) json_object_set_new(query, "until_cursor", json_string(until_cursor));
     if (filter != NULL){
-        json_t *json_fiter = json_loads(filter, JSON_REJECT_DUPLICATES, NULL);
-        json_object_set_new(query, "field_matches", json_fiter);
+        json_t *json_filter = json_loads(filter, JSON_REJECT_DUPLICATES, NULL);
+        json_object_set_new(query, "field_matches", json_filter);
     }
     char* query_string = json_dumps(query, JSON_ENCODE_ANY);
     json_decref(query);
@@ -206,7 +205,6 @@ void stop_handler(int dummy) {
             if (frame_string != NULL)
                 free(frame_string);
             frame_string = zstr_recv(client);
-            log_counter++;
         }
     }while( strcmp( frame_string, STOP ) != 0 );
     if (frame_string != NULL)
@@ -214,7 +212,7 @@ void stop_handler(int dummy) {
     active = false;
 }
 
-/* Do sth with the received message */
+/* Do sth with the received (log)message */
 int response_handler(zframe_t* cid, zmsg_t *response, FILE *sjr){
     zframe_t *frame;
     void *frame_data;
@@ -267,7 +265,6 @@ int response_handler(zframe_t* cid, zmsg_t *response, FILE *sjr){
             write(fd, frame_data, frame_size);
 
             write(fd, "\n", 1);
-            log_counter++;
         }
         zframe_destroy (&frame);
     }while(more);
@@ -817,10 +814,10 @@ Default is tcp://localhost:5555\n\n"
     /* ensure existence of a machine id */
     check_machine_id();
 
-    /* initial setup */
-    ctx = zctx_new ();
+    /* initial setup of connection  */
+    ctx = zctx_new();
     client = zsocket_new (ctx, ZMQ_ROUTER);
-	assert(client);
+    assert(client);
     //zsocket_set_rcvhwm (client, CLIENT_HWM);
 
     int rc;
@@ -851,7 +848,6 @@ Default is tcp://localhost:5555\n\n"
 
     initial_time = zclock_time ();
 
-    //  zhash_t *connections = zhash_new ();
 
     /* timer for timeouts */
     time_t last_check=0;
@@ -871,7 +867,6 @@ Default is tcp://localhost:5555\n\n"
             client_ID = zmsg_pop (response);
             assert(client_ID);
             client_key = zframe_strhex(client_ID);
-            // lookup = zhash_lookup (connections, client_key);
             HASH_FIND_STR( connections, client_key, lookup );
             /*new connection*/
             if ( lookup == NULL ){
@@ -885,7 +880,6 @@ Default is tcp://localhost:5555\n\n"
                 lookup->id_frame = zframe_dup(client_ID);
                 lookup->client_key=client_key;
                 assert(lookup->sjr);
-                // zhash_insert(connections, client_key, lookup);
                 HASH_ADD_STR(connections, client_key, lookup);
             }
             else{

@@ -264,7 +264,6 @@ void send_flag(void *socket, zctx_t *ctx, char *flag){
     zframe_t *flag_frame = zframe_new ( flag, strlen(flag) + 1 );
     zmsg_push (msg, flag_frame);
 
-    /* ID will not be destroyed! */
     zmsg_send (&msg, socket);
 
     /* context with all sockets will be destroyed if given */
@@ -573,7 +572,6 @@ The journal-gateway-zmtp-sink has to expose the given socket.\n\n"
     // /* for stopping the gateway via keystroke (ctrl-c) */
     s_catch_signals();
     // signal(SIGINT, stop_gateway);
-    // signal(SIGUSR1, bar);
 
     // Socket to talk to clients
     void *frontend = zsocket_new (ctx, ZMQ_DEALER);
@@ -624,6 +622,7 @@ The journal-gateway-zmtp-sink has to expose the given socket.\n\n"
             }
         }
 
+        // received a message from the sink
         if (items[0].revents & ZMQ_POLLIN) {
             msg = zmsg_recv (frontend);
 
@@ -654,6 +653,7 @@ The journal-gateway-zmtp-sink has to expose the given socket.\n\n"
             }
         }
 
+        // received a message from the query handler
         if (items[1].revents & ZMQ_POLLIN) {
             zmsg_t *response = zmsg_recv (backend);
 
