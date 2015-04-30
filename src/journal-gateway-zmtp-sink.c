@@ -31,18 +31,20 @@
 
 #include "uthash/uthash.h"
 #include "journal-gateway-zmtp.h"
+#include "journal-gateway-zmtp-control.h"
+
 #define KEYDATA(KEY) .key=KEY, .keylen=strlen(KEY)
 
 static zctx_t *ctx;
-static void *client;
+static void *client, *router_control;
 uint64_t initial_time;
 int log_counter = 0;
 int heartbeating = HEARTBEATING;
 
 /* cli arguments */
 int     reverse=0, at_most=-1, follow=0, listening=0;
-char    *since_timestamp=NULL, *until_timestamp=NULL, *client_socket_address=NULL, *format=NULL,
-        *since_cursor=NULL, *until_cursor=NULL, *filter=NULL;
+char    *since_timestamp=NULL, *until_timestamp=NULL, *client_socket_address=NULL, *control_socket_address=NULL,
+        *format=NULL, *since_cursor=NULL, *until_cursor=NULL, *filter=NULL,
         *remote_journal_directory=NULL;
 
 typedef struct {
@@ -104,6 +106,11 @@ static struct Command valid_commands[] = {
     {.id = CTRL_SHUTDOWN, KEYDATA("shutdown")},
     {.id = SHOW_HELP, KEYDATA("help")}
 };
+
+int execute_command(opcode command_id, json_t *command_arg);
+
+int get_command_id_by_key(const char *inp_key, opcode *result);
+
 time_t get_clock_time(){
     struct timespec time;
     clock_gettime(CLOCK_MONOTONIC, &time);
@@ -268,6 +275,63 @@ int response_handler(zframe_t* cid, zmsg_t *response, FILE *sjr){
     return ret;
 }
 
+/* handle received control messages */
+int control_handler (zmsg_t *command_msg, zframe_t *cid){
+    int ret=1;
+    zframe_t *frame;
+    int more, rc;
+    char *client_ID = zframe_strhex(cid);
+
+    do{
+        frame = zmsg_pop (command_msg);
+        more = zframe_more (frame);
+        char *json_string = zframe_strdup(frame);
+        assert(json_string);
+        // decode received command
+        json_t *control_package = json_loads(json_string, 0, NULL);
+        assert(control_package);
+        free(json_string);
+
+        // iterate over the packed commands (though the package should only contain one command)
+        void *iter = json_object_iter(control_package);
+        while(iter){
+            const char *command_key = json_object_iter_key(iter);
+            assert(command_key);
+            opcode command_id;
+            rc = get_command_id_by_key(command_key, &command_id);
+
+            zmsg_t *m = zmsg_new(); assert(m);
+            zframe_t *response;
+            //command was valid
+            if( rc==1 ){
+                json_t* command_arg = json_object_iter_value(iter);
+                // now do the appropriate action with this commands
+                rc = execute_command(command_id, command_arg);
+                //if rc==0 the command execution failed unexpectedly, this shouldn't happen in this if branch
+                assert(rc);
+                response = zframe_new(CTRL_ACCEPTED,strlen(CTRL_ACCEPTED));
+                zmsg_push(m,response);
+                zmsg_push(m, cid);
+                zmsg_send(&m, router_control);
+            }
+            //command was not valid
+            else{
+                response = zframe_new(CTRL_UKCOM, strlen(CTRL_UKCOM));
+                zmsg_push(m, response);
+                zmsg_push(m, cid);
+                zmsg_send(&m, router_control);
+            }
+
+            iter = json_object_iter_next(control_package, iter);
+        }
+        zframe_destroy (&frame);
+    }while(more);
+
+    // cleanup
+    free(client_ID);
+
+    return ret;
+}
 /* control API */
 
 /* changing the exposed port and signalling all logged on sources about the change */
@@ -633,20 +697,31 @@ Default is tcp://localhost:5555\n\n"
 	assert(client);
     //zsocket_set_rcvhwm (client, CLIENT_HWM);
 
+    int rc;
     if(client_socket_address != NULL)
         zsocket_bind (client, client_socket_address);
     else
         zsocket_bind (client, DEFAULT_FRONTEND_SOCKET);
 
+    router_control = zsocket_new(ctx, ZMQ_ROUTER);
+    assert(router_control);
+
+    if(control_socket_address != NULL)
+        rc = zsocket_bind (router_control, control_socket_address);
+    else
+        rc = zsocket_bind (router_control, DEFAULT_CONTROL_SOCKET);
+    assert(rc);
+
+    zsocket_bind(router_control, "ipc://input");
     /* for stopping the client and the gateway handler via keystroke (ctrl-c) */
     signal(SIGINT, stop_handler);
 
     zmq_pollitem_t items [] = {
         { client, 0, ZMQ_POLLIN, 0 },
+        { router_control, 0, ZMQ_POLLIN, 0 },
     };
 
     zmsg_t *response;
-    int rc;
 
     initial_time = zclock_time ();
 
@@ -658,9 +733,10 @@ Default is tcp://localhost:5555\n\n"
     zframe_t *client_ID;
     char* client_key;
 
-    /* receive logs, initiate connections to new sources, respond to heartbeats */
+    /* receive controls or logs, initiate connections to new sources */
     while ( active ){
-        rc=zmq_poll (items, 1, 60000);
+        rc=zmq_poll (items, 2, 100);
+        /* receive logs */
         if(items[0].revents & ZMQ_POLLIN){
             response = zmsg_recv(client);
             client_ID = zmsg_pop (response);
@@ -698,6 +774,15 @@ Default is tcp://localhost:5555\n\n"
                 HASH_DEL(connections, lookup);
             }
         }
+        /* receive controls */
+        if(items[1].revents & ZMQ_POLLIN){
+            response = zmsg_recv(router_control);
+            client_ID = zmsg_pop (response);
+            assert(client_ID);
+            rc = control_handler(response, client_ID);
+            assert(rc);
+            zmsg_destroy (&response);
+        }
         time_t now = get_clock_time();
         if ( difftime(now, last_check) > 60 ){
             last_check=now;
@@ -712,6 +797,7 @@ Default is tcp://localhost:5555\n\n"
     }
     /* clear everything up */
     zsocket_destroy (ctx, client);
+    zsocket_destroy (ctx, router_control);
     zctx_destroy (&ctx);
 
     //benchmark(initial_time, log_counter);
