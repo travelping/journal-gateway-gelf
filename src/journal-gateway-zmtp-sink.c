@@ -33,7 +33,7 @@
 #include "journal-gateway-zmtp.h"
 #include "journal-gateway-zmtp-control.h"
 
-#define KEYDATA(KEY) .key=KEY, .keylen=strlen(KEY)
+#define KEYDATA(KEY) .key=KEY, .keylen=sizeof(KEY)
 
 static zctx_t *ctx;
 static void *client, *router_control;

@@ -75,7 +75,7 @@ void RequestMeta_destruct (RequestMeta *args){
     if (args->field != NULL ) free(args->field);
     void **clauses = args->clauses;
     if (clauses != NULL ){
-        int i,j;
+        size_t i,j;
         for(i=0;i<args->n_clauses;i++){
             Clause *clause = clauses[i];
             for(j=0;j<clause->n_primitives;j++){

@@ -287,7 +287,7 @@ void adjust_journal(RequestMeta *args, sd_journal *j){
         sd_journal_seek_head( j );
 
     /* field matches conditions */
-    int i,k;
+    size_t i,k;
     Clause *clause;
     for(i=0;i<args->n_clauses;i++){
         clause = (args->clauses)[i];
@@ -605,7 +605,7 @@ The journal-gateway-zmtp-sink has to expose the given socket.\n\n"
 
 
     zmsg_t *msg;
-    zframe_t *handler_ID;
+    zframe_t *handler_ID = NULL;
     RequestMeta *args;
     int rc;
     while ( active ) {
