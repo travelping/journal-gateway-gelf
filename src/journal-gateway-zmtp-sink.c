@@ -43,6 +43,7 @@ int heartbeating = HEARTBEATING;
 int     reverse=0, at_most=-1, follow=0, listening=0;
 char    *since_timestamp=NULL, *until_timestamp=NULL, *client_socket_address=NULL, *format=NULL,
         *since_cursor=NULL, *until_cursor=NULL, *filter=NULL;
+        *remote_journal_directory=NULL;
 
 typedef struct {
     char            *client_key;
@@ -50,6 +51,9 @@ typedef struct {
     time_t          time_last_message;
     UT_hash_handle  hh; /*requirement for uthash*/
 }Connection;
+
+// hash to note every incomming connection
+Connection *connections = NULL;
 
 // structures for controlhandling
 
@@ -542,9 +546,7 @@ int main ( int argc, char *argv[] ){
         { 0, 0, 0, 0 }
     };
 
-    int c;
-
-    const char *remote_journal_directory = getenv(REMOTE_JOURNAL_DIRECTORY);
+    remote_journal_directory = getenv(REMOTE_JOURNAL_DIRECTORY);
     if (!(remote_journal_directory)) {
         fprintf(stderr, "%s not specified.\n", REMOTE_JOURNAL_DIRECTORY);
         exit(1);
@@ -556,7 +558,7 @@ int main ( int argc, char *argv[] ){
     }
     const char sjr_cmd_format[] = "/lib/systemd/systemd-journal-remote -o %s/%s.journal -";
 
-
+    int c;
     while((c = getopt_long(argc, argv, "a:b:c:d:e:f:ghs:", longopts, NULL)) != -1) {
         switch (c) {
             case 'a':
@@ -649,20 +651,21 @@ Default is tcp://localhost:5555\n\n"
     initial_time = zclock_time ();
 
     //  zhash_t *connections = zhash_new ();
-    Connection *connections = NULL;
-    Connection *lookup;
 
     /* timer for timeouts */
     time_t last_check=0;
+    Connection *lookup;
+    zframe_t *client_ID;
+    char* client_key;
 
     /* receive logs, initiate connections to new sources, respond to heartbeats */
     while ( active ){
         rc=zmq_poll (items, 1, 60000);
         if(items[0].revents & ZMQ_POLLIN){
             response = zmsg_recv(client);
-            zframe_t *client_ID = zmsg_pop (response);
+            client_ID = zmsg_pop (response);
             assert(client_ID);
-            char* client_key = zframe_strhex(client_ID);
+            client_key = zframe_strhex(client_ID);
             // lookup = zhash_lookup (connections, client_key);
             HASH_FIND_STR( connections, client_key, lookup );
             /*new connection*/
