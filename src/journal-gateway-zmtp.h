@@ -39,9 +39,8 @@
 #define SLEEP 0 // 1500000L //  500000000L
 
 #define UNUSED(x) (void)(x)
+
 typedef struct RequestMeta {
-    zframe_t *client_ID;
-    char* client_ID_string;
     const char *format;
     int at_most;
     uint64_t since_timestamp;
@@ -68,7 +67,6 @@ typedef struct Clause {
 
 /* destructor for RequestMeta */
 void RequestMeta_destruct (RequestMeta *args){
-    free(args->client_ID_string);
     if (args->format != NULL) free( (void *) args->format);
     if (args->since_cursor != NULL) free(args->since_cursor);
     if (args->until_cursor != NULL) free(args->until_cursor);
