@@ -829,11 +829,13 @@ Default is tcp://localhost:5555\n\n"
 
     /* for stopping the client and the gateway handler via keystroke (ctrl-c) */
     signal(SIGINT, stop_handler);
+
     int rc;
     if(client_socket_address != NULL)
-        zsocket_bind (client, client_socket_address);
+        rc = zsocket_bind (client, client_socket_address);
     else
-        zsocket_bind (client, DEFAULT_FRONTEND_SOCKET);
+        rc = zsocket_bind (client, DEFAULT_FRONTEND_SOCKET);
+    assert(rc);
 
     router_control = zsocket_new(ctx, ZMQ_ROUTER);
     assert(router_control);
