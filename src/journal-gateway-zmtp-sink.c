@@ -260,10 +260,8 @@ int response_handler(zframe_t* cid, zmsg_t *response, FILE *sjr){
         else{
 			assert(((char*)frame_data)[0] == '_');
             int fd = fileno(sjr);
-
 			fflush(stderr);
             write(fd, frame_data, frame_size);
-
             write(fd, "\n", 1);
         }
         zframe_destroy (&frame);
@@ -331,6 +329,7 @@ int control_handler (zmsg_t *command_msg, zframe_t *cid){
 
     return ret;
 }
+
 /* control API */
 
 /* changing the exposed port and signalling all logged on sources about the change */
@@ -820,6 +819,8 @@ Default is tcp://localhost:5555\n\n"
     assert(client);
     //zsocket_set_rcvhwm (client, CLIENT_HWM);
 
+    /* for stopping the client and the gateway handler via keystroke (ctrl-c) */
+    signal(SIGINT, stop_handler);
     int rc;
     if(client_socket_address != NULL)
         zsocket_bind (client, client_socket_address);
@@ -836,8 +837,6 @@ Default is tcp://localhost:5555\n\n"
     assert(rc);
 
     zsocket_bind(router_control, "ipc://input");
-    /* for stopping the client and the gateway handler via keystroke (ctrl-c) */
-    signal(SIGINT, stop_handler);
 
     zmq_pollitem_t items [] = {
         { client, 0, ZMQ_POLLIN, 0 },
@@ -847,8 +846,6 @@ Default is tcp://localhost:5555\n\n"
     zmsg_t *response;
 
     initial_time = zclock_time ();
-
-
     /* timer for timeouts */
     time_t last_check=0;
     Connection *lookup;
