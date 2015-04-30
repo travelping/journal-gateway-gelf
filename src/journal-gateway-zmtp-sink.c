@@ -813,6 +813,11 @@ Default is tcp://localhost:5555\n\n"
         }
     }
 
+    int major, minor, patch;
+    zmq_version(&major, &minor, &patch);
+
+    printf("Uses ZMQ version %d.%d.%d\n", major, minor, patch);
+
     /* ensure existence of a machine id */
     check_machine_id();
 
