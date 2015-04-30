@@ -38,6 +38,7 @@
 /* DEBUGGING, defines the time the gateway is waiting after sending one log */
 #define SLEEP 0 // 1500000L //  500000000L
 
+#define UNUSED(x) (void)(x)
 typedef struct RequestMeta {
     zframe_t *client_ID;
     char* client_ID_string;

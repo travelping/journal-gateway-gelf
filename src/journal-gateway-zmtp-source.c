@@ -78,6 +78,7 @@
 /* signal handler function, can be used to interrupt the gateway via keystroke */
 static bool active = true, working_on_query = false;
 void stop_gateway(int dummy) {
+    UNUSED(dummy);
     sd_journal_print(LOG_INFO, "stopping the gateway...");
     active = false; // stop the gateway
 }
@@ -299,6 +300,7 @@ void adjust_journal(RequestMeta *args, sd_journal *j){
 }
 
 int check_args(sd_journal *j, RequestMeta *args, uint64_t realtime_usec, uint64_t monotonic_usec){
+    UNUSED(monotonic_usec);
     if( ( args->reverse == true && args->since_cursor != NULL && sd_journal_test_cursor ( j, args->since_cursor ) )
         || ( args->reverse == false && args->until_cursor != NULL && sd_journal_test_cursor ( j, args->until_cursor ) )
         || ( args->reverse == true && (int) args->since_timestamp != -1 && args->since_timestamp > realtime_usec )

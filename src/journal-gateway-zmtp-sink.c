@@ -190,6 +190,7 @@ void benchmark(uint64_t initial_time, int log_counter) {
 
 static bool active = true;
 void stop_handler(int dummy) {
+    UNUSED(dummy);
     int rc;
     zmq_pollitem_t items [] = {
         { client, 0, ZMQ_POLLIN, 0 },
