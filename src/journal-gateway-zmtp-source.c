@@ -76,7 +76,7 @@
 #include "journal-gateway-zmtp.h"
 
 /* signal handler function, can be used to interrupt the gateway via keystroke */
-static bool active = true;
+static bool active = true, working_on_query = false;
 void stop_gateway(int dummy) {
     sd_journal_print(LOG_INFO, "stopping the gateway...");
     active = false; // stop the gateway
@@ -455,6 +455,8 @@ static void *handler_routine (void *_args) {
 
     int loop_counter = args->at_most;
 
+    working_on_query = true;
+
     while (loop_counter > 0 || args->at_most == -1) {
 
         loop_counter--;
@@ -471,6 +473,7 @@ static void *handler_routine (void *_args) {
                 /* client wants no more logs */
                 send_flag_wrapper (j, args, query_handler, ctx, "confirmed stop", STOP);
                 free (client_msg);
+                working_on_query = false;
                 return NULL;
             }
             free (client_msg);
@@ -600,7 +603,9 @@ The journal-gateway-zmtp-sink has to expose the given socket.\n\n"
     /* initiate connection to the sink */
     send_flag(frontend, NULL, LOGON );
 
+
     zmsg_t *msg;
+    zframe_t *handler_ID;
     RequestMeta *args;
     int rc;
     while ( active ) {
@@ -620,6 +625,8 @@ The journal-gateway-zmtp-sink has to expose the given socket.\n\n"
         if (items[0].revents & ZMQ_POLLIN) {
             msg = zmsg_recv (frontend);
 
+            // expecting query
+            if(!working_on_query){
                 args = parse_json(msg);
                 /* if query is valid open query handler and pass args to it */
                 if (args != NULL) {
@@ -631,16 +638,27 @@ The journal-gateway-zmtp-sink has to expose the given socket.\n\n"
                     send_flag(frontend, NULL, ERROR );
                 }
             zmsg_destroy ( &msg );
+            }
+            // working on query, expecting notification (STOP, END, ...)
+            else{
+                zframe_t *hid_dup = zframe_dup(handler_ID);
+                zmsg_push(msg, hid_dup);
+                zmsg_send(&msg, backend);
+                // zframe_t *notification = zmsg_pop(msg);
+                // void *notification_data = zframe_data(notification);
+                // size_t notification_size = zframe_size(notification);
+                // if( memcmp( notification_data, STOP, strlen(STOP) )){
+                // }
+            }
         }
 
         if (items[1].revents & ZMQ_POLLIN) {
             zmsg_t *response = zmsg_recv (backend);
 
-            zframe_t *handler_ID = zmsg_pop (response);
+            handler_ID = zmsg_pop (response);
             zframe_t *handler_response = zmsg_last (response);
 
             char *handler_response_string = zframe_strdup (handler_response);
-			zframe_destroy (&handler_ID);
 
             /* case handler ENDs or STOPs the query, regulary or because of error (e.g. missing heartbeat) */
             if( strcmp( handler_response_string, END ) == 0
