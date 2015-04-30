@@ -263,7 +263,6 @@ void send_flag(void *socket, zctx_t *ctx, char *flag){
     zmsg_t *msg = zmsg_new();
     zframe_t *flag_frame = zframe_new ( flag, strlen(flag) + 1 );
     zmsg_push (msg, flag_frame);
-
     zmsg_send (&msg, socket);
 
     /* context with all sockets will be destroyed if given */
@@ -510,7 +509,7 @@ static void *handler_routine (void *_args) {
         }
         /* end of journal and 'follow' or 'listen' active? => wait indefinitely */
         else if ( rc == 0 && (args->follow || args->listening) ){
-            sd_journal_wait( j, (uint64_t) -1 );
+            sd_journal_wait( j, (uint64_t) 5000 );
         }
         /* in case moving the journal pointer around produced an error */
         else if ( rc < 0 ){
