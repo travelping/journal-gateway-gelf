@@ -593,6 +593,130 @@ int execute_command(opcode command_id, json_t *command_arg){
     return 1;
 }
 
+/*
+*/
+int parse_command(char **command, char **argument){
+    char inp[1024];
+
+    //get the input, checking NULL to catch EOF input
+    if(fgets(inp, sizeof(inp), stdin) == NULL){
+        *command = strdup("");
+        *argument = strdup("");
+        return 0;
+    }
+
+    // parse the input
+    // leading spaces
+    size_t i=0;
+    while(isspace(inp[i])&& i<sizeof(inp)){
+        i++;
+    }
+    // command
+    size_t pc = i, lc = 0;
+    while(!isspace(inp[i]) &&  i<sizeof(inp)){
+        lc++;
+        i++;
+    }
+    // spaces between command and argument
+    while(isspace(inp[i]) && i<sizeof(inp)){
+        i++;
+    }
+    // argument
+    size_t pa=i, la=0;
+    while(inp[i]!='\n' && inp[i]!=EOF && i<sizeof(inp)){
+        la++;
+        i++;
+    }
+
+    *command = strndup(inp+pc, lc);
+    *argument = strndup(inp+pa, la);
+
+    return 1;
+}
+
+int send_command(void *socket, char *command, char *argument){
+    zmsg_t *msg = zmsg_new();
+    assert(msg);
+    json_t *package = json_object();
+    assert(package);
+    int rc = json_object_set(package, command, json_string(argument));
+    // check if creation of the package was succesful
+    if(rc!=0){
+        fprintf(stderr, "%s\n", "Command contains non UTF-8 symbols, abborted");
+        return 0;
+    }
+    char *command_string = json_dumps(package, JSON_ENCODE_ANY);
+    assert(command_string);
+    zframe_t *command_frame = zframe_new (command_string, strlen(command_string));
+    zmsg_push (msg, command_frame);
+    zmsg_send (&msg, socket);
+
+    //cleanup
+    free(package);
+    free(command_string);
+    return 1;
+}
+
+// read input from stdin to configure the gateway at runtime
+static void *input_loop (void *args){
+    UNUSED(args);
+    // prepare connection to main thread
+    zctx_t *input_ctx = zctx_new();
+    void *input_handler = zsocket_new (input_ctx, ZMQ_DEALER);
+    int rc = zsocket_connect (input_handler, "ipc://input");
+    assert(!rc);
+
+    zmq_pollitem_t items[] = {
+        { input_handler, 0, ZMQ_POLLIN, 0},
+    };
+
+    // input loop
+    int more_input = 1;
+    rc = 0;
+    char *command, *argument;
+    while (more_input){
+        fprintf(stdout, "Input commands to change configuration of the Gateway\n");
+        //truncate the first leading whitespace of the argument
+        // scanf("%512s%512[^\n]s", command, argument);
+        parse_command(&command, &argument);
+        // send command to main thread
+        rc = send_command(input_handler, command, argument);
+        //sending failed, begin anew
+        if(rc == 0){
+            continue;
+        }
+        fprintf(stdout, "%s\n", "waiting for acceptance of command...");
+        // wait for reaction of the main thread
+        rc = zmq_poll(items, 1, 5000);
+        if(rc == -1){
+            // error in zmq poll
+        }
+        // got a response from the main thread before timeout
+        if (items[0].revents & ZMQ_POLLIN){
+            char *response = zstr_recv(input_handler);
+            if(strcmp(response, CTRL_UKCOM) == 0){
+                fprintf(stdout, "%s\n", "command unknown");
+            }
+            else if(strcmp(response, CTRL_ACCEPTED) == 0){
+                fprintf(stdout, "%s\n", "command accepted");
+            }
+            else{
+                fprintf(stdout, "%s\n", "unexpected response");
+            }
+            free(response);
+        }
+        // no response from main thread before timeout
+        else{
+            fprintf(stdout, "%s\n", "command not accepted. (timeout)");
+        }
+
+        //cleanup
+        free(command);
+        free(argument);
+    }
+    return NULL;
+}
+
 int main ( int argc, char *argv[] ){
 
     struct option longopts[] = {
@@ -732,6 +856,9 @@ Default is tcp://localhost:5555\n\n"
     Connection *lookup;
     zframe_t *client_ID;
     char* client_key;
+
+    /* start input loop */
+    zthread_new(input_loop, 0);
 
     /* receive controls or logs, initiate connections to new sources */
     while ( active ){
