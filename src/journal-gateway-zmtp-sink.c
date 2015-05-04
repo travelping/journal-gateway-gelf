@@ -106,7 +106,7 @@ static struct Command valid_commands[] = {
     {.id = SHOW_HELP, KEYDATA("help")}
 };
 
-int execute_command(opcode command_id, json_t *command_arg);
+int execute_command(opcode command_id, json_t *command_arg, zframe_t **response);
 
 int get_command_id_by_key(const char *inp_key, opcode *result);
 
@@ -382,7 +382,7 @@ int set_exposed_port(int port){
 
 /* changing the directory, in which the remote journals are stored*/
 int set_log_directory(char *new_directory){
-    int ret = 0;
+    int ret = 1;
 
     // create specified directory with rwxrw-rw-
     ret = mkdir(new_directory, 0766);
@@ -390,10 +390,12 @@ int set_log_directory(char *new_directory){
         switch(errno){
             case EEXIST:
                 // directory already exists, everythings fine
-                ret = 0; break;
+                ret = 1;
+                break;
             default:
                 // some other error occured
                 fprintf(stderr, "Error while creating the directory, errno: %d \n", errno);
+                return -1;
         }
     }
     free(remote_journal_directory);
@@ -415,8 +417,13 @@ void show_sources(char *ret){
     //todo check for to long output
     int length = 0;
     Connection *i, *tmp;
-    HASH_ITER(hh, connections, i, tmp){
-        length += sprintf(ret+length, "%s\n", i->client_key);
+    if( 0 < HASH_COUNT(connections) ){
+        HASH_ITER(hh, connections, i, tmp){
+            length += sprintf(ret+length, "%s\n", i->client_key);
+        }
+    }
+    else{
+        sprintf(ret, "No Sources\n");
     }
 }
 
@@ -441,39 +448,41 @@ void show_filter(char *ret){
 }
 
 // shows a help dialogue
-void show_help(){
-    fprintf(stdout,
+void show_help(char *ret){
+    sprintf(ret,
 "Usage: Type in one of the following commands and \n\
 optional arguments (space separated), confirm your input by pressing enter\n\n\
 \thelp\t\t\twill show this\n\
-\tsince\t\t\trequires a timestamp with a format like \"2014-10-01 18:00:00\"\n\
-\tuntil\t\t\tsee --since\n\
+\tsince_timestamp\t\trequires a timestamp with a format like \"2014-10-01 18:00:00\"\n\
+\tuntil_timestamp\t\tsee --since_timestamp\n\
 \tsince_cursor\t\trequires a log cursor, see e.g. 'journalctl -o export'\n\
 \tuntil_cursor\t\tsee --since_cursor\n\
 \tat_most\t\t\trequires a positive integer N, at most N logs will be sent\n\
 \tfollow\t\t\tlike 'journalctl -f', follows the remote journal\n\
 \tlisten\t\t\tthe sink waits indefinitely for incomming messages from sources\n\
 \treverse\t\t\treverses the log stream such that newer logs will be sent first\n\
-\tfilter\t\t\trequires input of the form e.g. \"[[\\\"FILTER_1\\\", \\\"FILTER_2\\\"], [\\\"FILTER_3\\\"]]\"\n\
+\tfilter\t\t\trequires input of the form e.g. \"[[\"FILTER_1\", \"FILTER_2\"], [\"FILTER_3\"]]\"\n\
 \t\t\t\tthis example reprensents the boolean formula \"(FILTER_1 OR FILTER_2) AND (FILTER_3)\"\n\
 \t\t\t\twhereas the content of FILTER_N is matched against the contents of the logs;\n\
-\t\t\t\tExample: --filter [[\\\"PRIORITY=3\\\"]] only shows logs with exactly priority 3 \n\
+\t\t\t\tExample: --filter [[\"PRIORITY=3\"]] only shows logs with exactly priority 3 \n\
 \tshow_filter\t\tshows the current filters (see above)\n\
 \tset_exposed_port\trequires a valid tcp port\n\
+\tset_log_directory\trequires a path to a directory\n\
 \tshow_sources\t\tshows the connected sources\n\
+\tsend_query\t\ttriggers all sources to send logs coresponding to the current set of filters\n\
 \tshutdown\t\tstops the gateway\
 \n\n"
     );
 }
 
-void send_query(){
+void send_stop(){
     char *query_string = build_query_string();
     zmsg_t *m;
     zframe_t *queryframe, *cid;
     Connection *i, *tmp;
     HASH_ITER(hh, connections, i, tmp){
         m = zmsg_new(); assert(m);
-        queryframe = zframe_new(query_string, strlen(query_string));
+        queryframe = zframe_new(STOP, strlen(STOP));
         assert(queryframe);
         // duplicate id_frame so it won't be destroyed
         cid = zframe_dup(i->id_frame);
@@ -485,14 +494,19 @@ void send_query(){
     free(query_string);
 }
 
-void send_stop(){
+void send_query(){
+    //waiting for source to finish old query
+    sleep(1);
+    send_stop();
+    //waiting for source to finish old query
+    sleep(1);
     char *query_string = build_query_string();
     zmsg_t *m;
     zframe_t *queryframe, *cid;
     Connection *i, *tmp;
     HASH_ITER(hh, connections, i, tmp){
         m = zmsg_new(); assert(m);
-        queryframe = zframe_new(STOP, strlen(STOP));
+        queryframe = zframe_new(query_string, strlen(query_string));
         assert(queryframe);
         // duplicate id_frame so it won't be destroyed
         cid = zframe_dup(i->id_frame);
@@ -538,67 +552,81 @@ int get_arg_int(json_t *arg){
     apply the specified command, encrypted as ID
     returns 1 on success and 0 else
 */
-int execute_command(opcode command_id, json_t *command_arg){
+int execute_command(opcode command_id, json_t *command_arg, zframe_t **response){
     int port;
     char *dir, stringh[2048];
 
     switch (command_id){
         case FT_REVERSE:
             reverse = get_arg_int(command_arg);
+            *response = zframe_new(CTRL_ACCEPTED,strlen(CTRL_ACCEPTED));
             break;
         case FT_AT_MOST:
             at_most = get_arg_int(command_arg);
+            *response = zframe_new(CTRL_ACCEPTED,strlen(CTRL_ACCEPTED));
             break;
         case FT_SINCE_TIMESTAMP:
             free(since_timestamp);
             since_timestamp = get_arg_string(command_arg);
+            *response = zframe_new(CTRL_ACCEPTED,strlen(CTRL_ACCEPTED));
             break;
         case FT_UNTIL_TIMESTAMP:
             free(until_timestamp);
             until_timestamp = get_arg_string(command_arg);
+            *response = zframe_new(CTRL_ACCEPTED,strlen(CTRL_ACCEPTED));
             break;
         case FT_SINCE_CURSOR:
             free(since_cursor);
             since_cursor = get_arg_string(command_arg);
+            *response = zframe_new(CTRL_ACCEPTED,strlen(CTRL_ACCEPTED));
             break;
         case FT_UNTIL_CURSOR:
             free(until_cursor);
             until_cursor = get_arg_string(command_arg);
+            *response = zframe_new(CTRL_ACCEPTED,strlen(CTRL_ACCEPTED));
             break;
         case FT_FOLLOW:
             follow = get_arg_int(command_arg);
+            *response = zframe_new(CTRL_ACCEPTED,strlen(CTRL_ACCEPTED));
             break;
         case FT_FILTER:
             free(filter);
             filter = get_arg_string(command_arg);
+            *response = zframe_new(CTRL_ACCEPTED,strlen(CTRL_ACCEPTED));
             break;
         case FT_LISTEN:
             listening = get_arg_int(command_arg);
+            *response = zframe_new(CTRL_ACCEPTED,strlen(CTRL_ACCEPTED));
             break;
         case SET_EXPOSED_PORT:
             port = get_arg_int(command_arg);
             set_exposed_port(port);
+            *response = zframe_new(CTRL_ACCEPTED,strlen(CTRL_ACCEPTED));
             break;
         case SET_LOG_DIRECTORY:
             dir = get_arg_string(command_arg);
             set_log_directory(dir);
+            *response = zframe_new(CTRL_ACCEPTED,strlen(CTRL_ACCEPTED));
             break;
         case SHOW_FILTER:
             show_filter(&stringh[0]);
-            fprintf(stdout, "Filter: %s\n", stringh);
+            *response = zframe_new(stringh,strlen(stringh));
             break;
         case SHOW_SOURCES:
             show_sources(&stringh[0]);
-            fprintf(stdout, "Sources: %s\n", stringh);
+            *response = zframe_new(stringh,strlen(stringh));
             break;
         case SHOW_HELP:
-            show_help();
+            show_help(&stringh[0]);
+            *response = zframe_new(stringh,strlen(stringh));
             break;
         case CTRL_SND_QUERY:
             send_query();
+            *response = zframe_new(CTRL_ACCEPTED,strlen(CTRL_ACCEPTED));
             break;
         case CTRL_SHUTDOWN:
             stop_handler(0);
+            *response = zframe_new(CTRL_ACCEPTED,strlen(CTRL_ACCEPTED));
             break;
         default:
             return 0;
@@ -623,7 +651,7 @@ int main ( int argc, char *argv[] ){
         { 0, 0, 0, 0 }
     };
 
-    remote_journal_directory = getenv(REMOTE_JOURNAL_DIRECTORY);
+    remote_journal_directory = strdup(getenv(REMOTE_JOURNAL_DIRECTORY));
     if (!(remote_journal_directory)) {
         fprintf(stderr, "%s not specified.\n", REMOTE_JOURNAL_DIRECTORY);
         exit(1);
