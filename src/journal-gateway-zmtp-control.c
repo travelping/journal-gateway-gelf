@@ -186,7 +186,7 @@ static void *input_loop (void *args){
     return NULL;
 }
 
-int main ( int argc, char *argv[] ){
+int main (){
     input_loop(0);
     return 0;
 }
