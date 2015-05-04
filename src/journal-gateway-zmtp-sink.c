@@ -779,6 +779,7 @@ Default is tcp://localhost:5555\n\n"
             client_ID = zmsg_pop (response);
             assert(client_ID);
             client_key = zframe_strhex(client_ID);
+            lookup = NULL;
             HASH_FIND_STR( connections, client_key, lookup );
             /*new connection*/
             if ( lookup == NULL ){
@@ -789,9 +790,7 @@ Default is tcp://localhost:5555\n\n"
                 lookup->client_key=client_key;
                 HASH_ADD_STR(connections, client_key, lookup);
             }
-            else{
-                free(client_key);
-            }
+            free(client_key);
             lookup->time_last_message = get_clock_time();
             rc = response_handler(client_ID, response, lookup->sjr);
             fflush(lookup->sjr);
