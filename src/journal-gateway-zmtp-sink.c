@@ -124,10 +124,12 @@ void check_machine_id(){
     assert ( sd_id128_get_machine(&ret) == 0 );
 }
 
+//helper for HASH
 /* removes item from hash */
-void con_hash_delete(Connection *hash, Connection *item){
-    HASH_DEL(hash, item);
+void con_hash_delete(Connection **hash, Connection *item){
+    HASH_DEL(*hash, item);
     free(item->client_key);
+    zframe_destroy(&(item->id_frame));
     pclose(item->sjr);
     free(item);
 }
@@ -271,6 +273,9 @@ int response_handler(zframe_t* cid, zmsg_t *response, FILE *sjr){
         }
         else if( memcmp( frame_data, LOGOFF, strlen(LOGOFF) ) == 0 ){
             sd_journal_print(LOG_INFO, "one source of the gateway logged off, ID: %s", client_ID);
+            Connection *lookup = NULL;
+            HASH_FIND_STR( connections, client_ID, lookup );
+            con_hash_delete( &connections, lookup );
             ret=2;
         }
         else{
@@ -775,9 +780,9 @@ Default is tcp://localhost:5555\n\n"
             if ( rc==1 || rc==-1 ){
                 break;
             }
+            // a source logged off
             if ( rc==2 ){
-                pclose(lookup->sjr);
-                HASH_DEL(connections, lookup);
+                NULL;
             }
         }
         /* receive controls */
@@ -796,7 +801,7 @@ Default is tcp://localhost:5555\n\n"
             HASH_ITER(hh, connections, i, tmp){
                 if (difftime(now, i->time_last_message)>60*60){
                     /* remove i from connections */
-                    con_hash_delete(connections, i);
+                    con_hash_delete(&connections, i);
                 }
             }
         }
