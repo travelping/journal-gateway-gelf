@@ -429,6 +429,7 @@ void send_flag_wrapper (sd_journal *j, RequestMeta *args, void *socket, zctx_t *
 static void *handler_routine (void *_args) {
     RequestMeta *args = (RequestMeta *) _args;
     zctx_t *ctx = zctx_new ();
+    s_catch_signals();
     void *query_handler = zsocket_new (ctx, ZMQ_DEALER);
 	assert(query_handler);
     //zsocket_set_sndhwm (query_handler, HANDLER_HWM);
