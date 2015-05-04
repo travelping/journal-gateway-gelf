@@ -32,6 +32,20 @@
 
 int more_input = 1;
 
+void stop_handler(int dummy) {
+    UNUSED(dummy);
+    more_input = 0;
+}
+
+static void s_catch_signals (){
+    struct sigaction action;
+    action.sa_handler = stop_handler;
+    action.sa_flags = 0;
+    sigemptyset (&action.sa_mask);
+    sigaction(SIGINT, &action, NULL);
+    sigaction(SIGTERM, &action, NULL);
+}
+
 int parse_command(char **command, char **argument){
     char inp[1024];
 
@@ -99,6 +113,9 @@ static void *input_loop (void *args){
     UNUSED(args);
     // prepare connection to main thread
     zctx_t *input_ctx = zctx_new();
+    /* for stopping the client and the gateway handler via keystroke (ctrl-c) */
+    s_catch_signals();
+
     void *input_handler = zsocket_new (input_ctx, ZMQ_DEALER);
     int rc = zsocket_connect (input_handler, "ipc://input");
     assert(!rc);
@@ -124,6 +141,7 @@ static void *input_loop (void *args){
         rc = zmq_poll(items, 1, 5000);
         if(rc == -1){
             // error in zmq poll
+            more_input=0;
         }
         // got a response from the main thread before timeout
         if (items[0].revents & ZMQ_POLLIN){
