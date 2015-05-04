@@ -69,7 +69,6 @@ typedef enum {
     FT_UNTIL_TIMESTAMP,
     FT_SINCE_CURSOR,
     FT_UNTIL_CURSOR,
-    FT_FORMAT,
     FT_FOLLOW,
     FT_FILTER,
     FT_LISTEN,
@@ -96,7 +95,6 @@ static struct Command valid_commands[] = {
     {.id = FT_UNTIL_TIMESTAMP, KEYDATA("until_timestamp")},
     {.id = FT_SINCE_CURSOR, KEYDATA("since_cursor")},
     {.id = FT_UNTIL_CURSOR, KEYDATA("until_cursor")},
-    {.id = FT_FORMAT, KEYDATA("format")},
     {.id = FT_FOLLOW, KEYDATA("follow")},
     {.id = FT_FILTER, KEYDATA("filter")},
     {.id = FT_LISTEN, KEYDATA("listen")},
@@ -434,7 +432,6 @@ void show_filter(char *ret){
     length += sprintf(ret+length, "until_timestamp = %s\n", until_timestamp);
     length += sprintf(ret+length, "since_cursor = %s\n", since_cursor);
     length += sprintf(ret+length, "until_cursor = %s\n", until_cursor);
-    length += sprintf(ret+length, "format = %s\n", format);
     length += sprintf(ret+length, "follow = %d\n", follow);
     length += sprintf(ret+length, "filter = %s\n", filter);
     length += sprintf(ret+length, "listen = %d\n", listening);
@@ -451,7 +448,6 @@ optional arguments (space separated), confirm your input by pressing enter\n\n\
 \tsince_cursor\t\trequires a log cursor, see e.g. 'journalctl -o export'\n\
 \tuntil_cursor\t\tsee --since_cursor\n\
 \tat_most\t\t\trequires a positive integer N, at most N logs will be sent\n\
-\tformat\t\t\trequires a format \"export\" or \"plain\", default is \"export\"\n\
 \tfollow\t\t\tlike 'journalctl -f', follows the remote journal\n\
 \tlisten\t\t\tthe sink waits indefinitely for incomming messages from sources\n\
 \treverse\t\t\treverses the log stream such that newer logs will be sent first\n\
@@ -566,10 +562,6 @@ int execute_command(opcode command_id, json_t *command_arg){
             free(until_cursor);
             until_cursor = get_arg_string(command_arg);
             break;
-        case FT_FORMAT:
-            free(format);
-            format = get_arg_string(command_arg);
-            break;
         case FT_FOLLOW:
             follow = get_arg_int(command_arg);
             break;
@@ -624,7 +616,6 @@ int main ( int argc, char *argv[] ){
         { "until",          required_argument,      NULL,         'c' },
         { "since_cursor",   required_argument,      NULL,         'd' },
         { "until_cursor",   required_argument,      NULL,         'e' },
-        { "format",         required_argument,      NULL,         'f' },
         { "follow",         no_argument,            NULL,         'g' },
         { "help",           no_argument,            NULL,         'h' },
         { "filter",         required_argument,      NULL,         'i' },
@@ -661,9 +652,6 @@ int main ( int argc, char *argv[] ){
             case 'e':
                 until_cursor = optarg;
                 break;
-            case 'f':
-                format = optarg;
-                break;
             case 'g':
                 follow = 1;
                 heartbeating = 1;
@@ -679,14 +667,13 @@ int main ( int argc, char *argv[] ){
 "journal-gateway-zmtp-sink -- receiving logs from journal-gateway-zmtp-source over the network\n\n\
 Usage: journal-gateway-zmtp-sink   [--help] [--since] [--until]\n\
                                    [--since_cursor] [--until_cursor] [--at_most]\n\
-                                   [--format] [--follow] [--reverse] [--filter]\n\n\
+                                   [--follow] [--reverse] [--filter]\n\n\
 \t--help \t\twill show this\n\
 \t--since \trequires a timestamp with a format like \"2014-10-01 18:00:00\"\n\
 \t--until \tsee --since\n\
 \t--since_cursor \trequires a log cursor, see e.g. 'journalctl -o export'\n\
 \t--until_cursor \tsee --since_cursor\n\
 \t--at_most \trequires a positive integer N, at most N logs will be sent\n\
-\t--format \trequires a format \"export\" or \"plain\", default is \"export\"\n\
 \t--follow \tlike 'journalctl -f', follows the remote journal\n\
 \t--listen \tthe sink waits indefinitely for incomming messages from sources\n\
 \t--reverse \treverses the log stream such that newer logs will be sent first\n\
