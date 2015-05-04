@@ -165,7 +165,7 @@ static void *input_loop (void *args){
                 fprintf(stdout, "%s\n", "command accepted");
             }
             else{
-                fprintf(stdout, "%s\n", "unexpected response");
+                fprintf(stdout, "Response:\n%s\n", response);
             }
             free(response);
         }
