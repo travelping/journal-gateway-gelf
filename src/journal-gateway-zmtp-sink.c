@@ -768,7 +768,7 @@ Default is tcp://localhost:5555\n\n"
     time_t last_check=0;
     Connection *lookup;
     zframe_t *client_ID;
-    char* client_key;
+    char *client_key;
 
     /* receive controls or logs, initiate connections to new sources */
     while ( active ){
