@@ -5,3 +5,4 @@
 #define CTRL_UKCOM "\005" // signals that the received command was not understood (unknown)
 #define CTRL_ACCEPTED "\006" // signals the the received command was accepted
 #define DEFAULT_CONTROL_SOCKET "tcp://*:5557"
+#define CTRL_TARGET_ENV "GATEWAY_CONTROL_TARGET"

@@ -116,8 +116,20 @@ static void *input_loop (void *args){
     /* for stopping the client and the gateway handler via keystroke (ctrl-c) */
     s_catch_signals();
 
+    char *control_socket_adress = NULL;
+    int rc;
+
     void *input_handler = zsocket_new (input_ctx, ZMQ_DEALER);
-    int rc = zsocket_connect (input_handler, "ipc://input");
+    assert(input_handler);
+
+    if (!getenv(CTRL_TARGET_ENV)) {
+        fprintf(stderr, "%s not specified.\n", CTRL_TARGET_ENV);
+        exit(1);
+    }
+    if(control_socket_adress != NULL)
+        rc = zsocket_connect (input_handler, control_socket_adress);
+    else
+        rc = zsocket_connect (input_handler, getenv(CTRL_TARGET_ENV));
     assert(!rc);
 
     zmq_pollitem_t items[] = {
@@ -166,6 +178,11 @@ static void *input_loop (void *args){
         free(command);
         free(argument);
     }
+
+    //cleanup
+    zsocket_destroy(input_ctx, input_handler);
+    zctx_destroy(&input_ctx);
+
     return NULL;
 }
 
