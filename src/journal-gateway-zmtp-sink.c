@@ -46,6 +46,9 @@ char    *since_timestamp=NULL, *until_timestamp=NULL, *client_socket_address=NUL
         *format=NULL, *since_cursor=NULL, *until_cursor=NULL, *filter=NULL,
         *remote_journal_directory=NULL;
 
+// constants
+const char sjr_cmd_format[] = "/lib/systemd/systemd-journal-remote -o %s/%s.journal -";
+
 typedef struct {
     char            *client_key;
     zframe_t        *id_frame;
@@ -129,6 +132,18 @@ void con_hash_delete(Connection *hash, Connection *item){
     free(item->client_key);
     pclose(item->sjr);
     free(item);
+}
+
+FILE* create_log_filestream(char *client_key){
+    FILE *ret = NULL;
+    char pathtojournalfile[256];
+    const char *journalname = client_key;
+    assert(strlen(remote_journal_directory) + strlen(journalname) +
+        sizeof(sjr_cmd_format) < sizeof(pathtojournalfile));
+    sprintf (pathtojournalfile, sjr_cmd_format, remote_journal_directory, journalname);
+    ret = popen(pathtojournalfile, "w");
+    assert(ret);
+    return ret;
 }
 
 char* make_json_timestamp(char *timestamp){
@@ -382,6 +397,12 @@ int set_log_directory(char *new_directory){
     }
     free(remote_journal_directory);
     remote_journal_directory = new_directory;
+    // adjust filestreams
+    Connection *i, *tmp;
+    HASH_ITER(hh, connections, i, tmp){
+        pclose(i->sjr);
+        i->sjr = create_log_filestream(i->client_key);
+    }
 
     return ret;
 }
@@ -621,7 +642,6 @@ int main ( int argc, char *argv[] ){
         fprintf(stderr, "%s not specified.\n", EXPOSED_SOCKET);
         exit(1);
     }
-    const char sjr_cmd_format[] = "/lib/systemd/systemd-journal-remote -o %s/%s.journal -";
 
     int c;
     while((c = getopt_long(argc, argv, "a:b:c:d:e:f:ghs:", longopts, NULL)) != -1) {
@@ -751,15 +771,10 @@ Default is tcp://localhost:5555\n\n"
             /*new connection*/
             if ( lookup == NULL ){
                 lookup = (Connection *) malloc( sizeof(Connection) );
-                char pathtojournalfile[256];
-                const char *journalname = client_key;
-                assert(strlen(remote_journal_directory) + strlen(journalname) +
-                        sizeof(sjr_cmd_format)<sizeof(pathtojournalfile));
-                sprintf (pathtojournalfile, sjr_cmd_format, remote_journal_directory, journalname);
-                lookup->sjr = popen(pathtojournalfile, "w");
+                assert(lookup);
+                lookup->sjr = create_log_filestream(client_key);
                 lookup->id_frame = zframe_dup(client_ID);
                 lookup->client_key=client_key;
-                assert(lookup->sjr);
                 HASH_ADD_STR(connections, client_key, lookup);
             }
             else{
