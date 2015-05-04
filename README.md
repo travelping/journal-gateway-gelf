@@ -8,57 +8,93 @@ Logs are stored in a journalfile, separated for each source.
 Configuration while Running
 ---------------------------
 
-== Enhanced Control for the ZMTP-Journal-Gateway
+###Enhanced Control for the ZMTP-Journal-Gateway
 
-To enable configuration of both sink and source during runtime the following API and connection is going to be implemented.
+To enable configuration of both sink and source during runtime the following API and connection is implemented.
 
-----
-+--------------+     ZMTP connection                     +------------+              
-|gateway source+--------------------------------->)------+gateway sink|              
-+-----+--------+     for control communication           +-+----------+              
-      |              between source and sink               |                         
-      |API                                                 |API                      
-      |        +----------+                                |      +----------------+ 
-      +--------+set_target|                                +------+set_exposed_port| 
-      |        +----------+                                |      +----------------+ 
-      |                                                    |                         
-      |        +----------+                                |      +-----------------+
-      +--------+set_filter|                                +------+set_log_directory|
-      |        +----------+                                |      +-----------------+
-      |                                                    |                         
-      |        +-------------+                             |      +------------+     
-      +--------+set_sourcelog|                             +------+show_sources|     
-               +-------------+                             |      +------------+     
-                                                           |                         
-                                                           |      +----------+       
-                                                           +------+set_filter|       
-                                                                  +----------+       
-----
-A more precise description of the API is coming along the road.
+```
++---------------+    ZMTP connection                     +------------+
+|gateway control+-------------------------------->)+-----+gateway sink|
++---------------+    for control communication           +-+----------+
+                     sink exposes a tcp port               |
+                     (default tcp://*:5557)                |
+                     which expects control signals         |      +----------------+
+                     that leads to calls of the API        +------+set_exposed_port|
+                                                           |      +----------------+
+                     (the most important are shown to      |
+                      the right, further explanations      |      +-----------------+
+                      see below)                           +------+set_log_directory|
+                                                           |      +-----------------+
+                                                           |
+                                                           |      +------------+
+                                                           +------+show_sources|
+                                                           |      +------------+
+                                                           |
+                                                           |      +----------+
+                                                           +------+show_filter
+                                                           |      +----------+
+                                                           |
+                                                           |      +----------+
+                                                           +------+shutdown  |
+                                                           |      +----------+
+                                                           |
+                                                           |
+                                                         (...) see below
+```
+
+The sink exposes a port on which a tool can connect via ZeroMQ. The gateway offers the journal-gateway-zmtp-control which is a simple one line input tool. The sink expects a json encoded string which contains a json_object (a dictionary of key-value pairs) with only one pair. The key contains the command and the value contains the arguments if any. The sink then checks if the command matches one of the valid commands. The source of the control command then receives a message: If succesfully matched the command gets executed and CTRL_ACCEPTED or the requested information is returned (for example a list of all connected logging sources is returned). If the match failed CTRL_UKCOM is returned.
+
+It follows a list of all valid commands and example arguments:
+
+
+command           | argument type | example argument    | explanation
+------------------|---------------|---------------------|------------
+reverse¹          | 0, 1          | 0                   | 0 (default) - output in normal direction, 1 - inverse direction
+at_most¹          | int           | 5                   | only this many messages will be sent
+since_timestamp   | timestamp     | 2014-10-01 18:00:00 | shows only logs since the specified timestamp
+until_timestamp¹  | timestamp     | 2014-10-01 18:00:00 | shows only logs until the specified timestamp
+since_cursor¹     | journalcursor | ²                   | shows only logs since the specified cursor
+until_cursor      | journalcursor | ²                   | shows only logs until the specified cursor
+follow            | 0, 1          | 1                   | 0 - doesn't follow the journal for new entries, 1 (default) - follows
+filter            | filter string | [["MESSAGE=a"]]     | the sources will only send entries matching the filter ³
+listen            | 0, 1          | 1                   | 0 - the sink will stop if the first source logs off, 1 (default) - the sink waits indefinitely for incomming connections
+set_exposed_port  | zmtp port     | 5556                | changes the port on which the sinks listens for incomming log messages
+set_log_directory | path          | /home/user/logtest  | changes the directory in which the messages are stored
+show_filter       | none          |                     | returns a string of the currently set filters
+show_sources      | none          |                     | returns a string of the currently logged on sources
+send_query        | none          |                     | the sink triggers all sources to send journals according to the set filters
+shutdown          | none          |                     | shuts down the sink
+help              | none          |                     | shows a short version of this table
+1: only usable if listen is deactivated
+2: s=a4b70ccdcd4a4fc5a52e168eea246e05;i=1;b=0e7e1cc42bdd4028835611b65f2adc
+3: requires input of the form e.g. [["FILTER_1", "FILTER_2"], ["FILTER_3"]] this example reprensents the boolean formula "(FILTER_1 OR FILTER_2) AND (FILTER_3) whereas the content of FILTER_N is matched against the contents of the logs
+
+
+
 
 Mode of Operation
 -----------------
 
 
-          +----------------+                                                         
-          |    journald    |                                                         
-          |                |                                                         
-          |                |                                                         
-          |                |                                                         
-          |                |                                                         
-          +-------+--------+                                                         
-          +-----+ |                                                                  
-          |file | |                                                                  
-          +-----+ | journal_api                                                      
-                  |                                                                  
-                  |                                                                  
-          +-------+--------+                                                         
-          |"gateway-source"|                                                         
-          |                |                                                         
-          |    acts as     |                                                         
-          |    journal     |                                                         
-          |    client      |                                                         
-          |                |                                                         
+          +----------------+
+          |    journald    |
+          |                |
+          |                |
+          |                |
+          |                |
+          +-------+--------+
+          +-----+ |
+          |file | |
+          +-----+ | journal_api
+                  |
+                  |
+          +-------+--------+
+          |"gateway-source"|
+          |                |
+          |    acts as     |
+          |    journal     |
+          |    client      |
+          |                |
           |                |                                         +--------------+
           |                |                                         |   journald   |
           |                |                                         |              |
@@ -89,8 +125,8 @@ for jansson and systemd. To install ZMQ and CZMQ follow the instructions on the 
 Then just execute (in the journal-gateway-zmtp directory):
 
 ```bash
-make              # you can also just build the gateway or the client 
-                  # with 'make source' or 'make sink' 
+make              # you can also just build the gateway or the client
+                  # with 'make source' or 'make sink'
 ```
 
 Usage
@@ -145,7 +181,7 @@ Example
 
 Start the sink:
 ```bash
-env JOURNAL_DIR=~/logs/remote/ journal-gateway-zmtp-sink --listen 
+env JOURNAL_DIR=~/logs/remote/ journal-gateway-zmtp-sink --listen
 ```
 Start the gateway:
 ```bash
