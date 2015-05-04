@@ -729,8 +729,6 @@ Default is tcp://localhost:5555\n\n"
         rc = zsocket_bind (router_control, DEFAULT_CONTROL_SOCKET);
     assert(rc);
 
-    zsocket_bind(router_control, "ipc://input");
-
     zmq_pollitem_t items [] = {
         { client, 0, ZMQ_POLLIN, 0 },
         { router_control, 0, ZMQ_POLLIN, 0 },
