@@ -77,7 +77,6 @@ typedef enum {
     SHOW_FILTER,
     SHOW_SOURCES,
     CTRL_SND_QUERY,
-    CTRL_SND_STOP,
     CTRL_SHUTDOWN,
     SHOW_HELP
 } opcode;
@@ -103,7 +102,6 @@ static struct Command valid_commands[] = {
     {.id = SHOW_FILTER, KEYDATA("show_filter")},
     {.id = SHOW_SOURCES, KEYDATA("show_sources")},
     {.id = CTRL_SND_QUERY, KEYDATA("send_query")},
-    {.id = CTRL_SND_STOP, KEYDATA("send_stop")},
     {.id = CTRL_SHUTDOWN, KEYDATA("shutdown")},
     {.id = SHOW_HELP, KEYDATA("help")}
 };
@@ -598,9 +596,6 @@ int execute_command(opcode command_id, json_t *command_arg){
             break;
         case CTRL_SND_QUERY:
             send_query();
-            break;
-        case CTRL_SND_STOP:
-            send_stop();
             break;
         case CTRL_SHUTDOWN:
             stop_handler(0);
