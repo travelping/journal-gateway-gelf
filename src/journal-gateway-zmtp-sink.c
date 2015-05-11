@@ -48,6 +48,7 @@ char    *since_timestamp=NULL, *until_timestamp=NULL, *client_socket_address=NUL
 
 // constants
 const char sjr_cmd_format[] = "/lib/systemd/systemd-journal-remote -o %s/%s.journal -";
+const char du_cmd_format[]  = "du -s %s";
 
 typedef struct {
     char            *client_key;
@@ -76,6 +77,7 @@ typedef enum {
     SET_LOG_DIRECTORY,
     SHOW_FILTER,
     SHOW_SOURCES,
+    SHOW_DISKUSAGE,
     CTRL_SND_QUERY,
     CTRL_SHUTDOWN,
     SHOW_HELP
@@ -101,6 +103,7 @@ static struct Command valid_commands[] = {
     {.id = SET_LOG_DIRECTORY, KEYDATA("set_log_directory")},
     {.id = SHOW_FILTER, KEYDATA("show_filter")},
     {.id = SHOW_SOURCES, KEYDATA("show_sources")},
+    {.id = SHOW_DISKUSAGE, KEYDATA("show_diskusage")},
     {.id = CTRL_SND_QUERY, KEYDATA("send_query")},
     {.id = CTRL_SHUTDOWN, KEYDATA("shutdown")},
     {.id = SHOW_HELP, KEYDATA("help")}
@@ -446,6 +449,19 @@ void show_filter(char *ret){
     length += sprintf(ret+length, "listen = %d\n", listening);
 }
 
+// returns a string with the used space in bytes
+void show_diskusage(char *ret){
+    char du_cmd[2048];
+    sprintf(du_cmd, du_cmd_format, remote_journal_directory);
+    FILE* du = popen(du_cmd, "r");
+    assert(du);
+    char du_ret[2048];
+    int rc = fscanf(du, "%s", du_ret);
+    assert(rc);
+    sprintf(ret, du_ret);
+}
+
+// returns a string with the help dialogue
 // shows a help dialogue
 void show_help(char *ret){
     sprintf(ret,
@@ -468,6 +484,7 @@ optional arguments (space separated), confirm your input by pressing enter\n\n\
 \tset_exposed_port\trequires a valid tcp port\n\
 \tset_log_directory\trequires a path to a directory\n\
 \tshow_sources\t\tshows the connected sources\n\
+\tshow_diskusage\t\tshows the used space of the selected directory (in bytes)\n\
 \tsend_query\t\ttriggers all sources to send logs coresponding to the current set of filters\n\
 \tshutdown\t\tstops the gateway\
 \n\n"
@@ -617,6 +634,10 @@ int execute_command(opcode command_id, json_t *command_arg, zframe_t **response)
             break;
         case SHOW_HELP:
             show_help(&stringh[0]);
+            *response = zframe_new(stringh,strlen(stringh));
+            break;
+        case SHOW_DISKUSAGE:
+            show_diskusage(&stringh[0]);
             *response = zframe_new(stringh,strlen(stringh));
             break;
         case CTRL_SND_QUERY:
