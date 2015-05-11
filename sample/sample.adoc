@@ -1,0 +1,19 @@
+test setup to check the major abbilities of the gateway:
+
+start the source and the sink as systemd services (depending on the test case on different machines):
+
+$systemctl start journal-gateway-zmtp-sink
+$systemctl start journal-gateway-zmtp-source
+
+start watching the output folder in the sink:
+$journalctl --directory /path/to/output/ -f
+
+start a continous stream of logs on the source (u can use the generate_logs script)
+
+$./generate_logs
+
+the stream of logs should now be visible in the target folder
+
+use the control tool as wished, some configurations can be checked with the control_sample script
+
+the stream should change accordingly
