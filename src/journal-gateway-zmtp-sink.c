@@ -64,7 +64,7 @@ Connection *connections = NULL;
 // structures for controlhandling
 
 typedef enum {
-    FT_REVERSE,
+    FT_REVERSE = 1,
     FT_AT_MOST,
     FT_SINCE_TIMESTAMP,
     FT_UNTIL_TIMESTAMP,
@@ -147,6 +147,11 @@ FILE* create_log_filestream(char *client_key){
     return ret;
 }
 
+/*
+    converts input timestamp into format
+
+
+*/
 char* make_json_timestamp(char *timestamp){
     if (timestamp == NULL) {
         return NULL;
@@ -462,7 +467,6 @@ void show_diskusage(char *ret){
 }
 
 // returns a string with the help dialogue
-// shows a help dialogue
 void show_help(char *ret){
     sprintf(ret,
 "Usage: Type in one of the following commands and \n\

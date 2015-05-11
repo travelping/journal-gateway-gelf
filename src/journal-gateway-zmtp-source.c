@@ -77,6 +77,7 @@
 
 static bool active = true, working_on_query = false;
 char *source_journal_directory;
+
 /* signal handler function, can be used to interrupt the gateway via keystroke */
 void stop_gateway(int dummy) {
     UNUSED(dummy);
@@ -587,7 +588,6 @@ The journal-gateway-zmtp-sink has to expose the given socket.\n\n"
 
     // /* for stopping the gateway via keystroke (ctrl-c) */
     s_catch_signals();
-    // signal(SIGINT, stop_gateway);
 
     // Socket to talk to clients
     void *frontend = zsocket_new (ctx, ZMQ_DEALER);
