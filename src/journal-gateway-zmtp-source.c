@@ -571,6 +571,11 @@ The journal-gateway-zmtp-sink has to expose the given socket.\n\n"
         fprintf(stderr, "%s not specified.\n", SOURCE_JOURNAL_DIRECTORY);
         exit(1);
     }
+    if (!getenv(TARGET_ADDRESS_ENV)) {
+        fprintf(stderr, "%s not specified.\n", TARGET_ADDRESS_ENV);
+        exit(1);
+    }
+
     sd_journal_print(LOG_INFO, "gateway started...");
 
     int major, minor, patch;
@@ -590,10 +595,6 @@ The journal-gateway-zmtp-sink has to expose the given socket.\n\n"
     //zsocket_set_sndhwm (frontend, GATEWAY_HWM);
     //zsocket_set_rcvhwm (frontend, GATEWAY_HWM);
 
-	if (!getenv(TARGET_ADDRESS_ENV)) {
-		fprintf(stderr, "%s not specified.\n", TARGET_ADDRESS_ENV);
-		exit(1);
-	}
     if(gateway_socket_address != NULL)
         zsocket_connect (frontend, gateway_socket_address);
     else

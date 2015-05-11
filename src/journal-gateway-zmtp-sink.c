@@ -651,17 +651,6 @@ int main ( int argc, char *argv[] ){
         { 0, 0, 0, 0 }
     };
 
-    remote_journal_directory = strdup(getenv(REMOTE_JOURNAL_DIRECTORY));
-    if (!(remote_journal_directory)) {
-        fprintf(stderr, "%s not specified.\n", REMOTE_JOURNAL_DIRECTORY);
-        exit(1);
-    }
-    client_socket_address = getenv(EXPOSED_SOCKET);
-    if (!(client_socket_address)) {
-        fprintf(stderr, "%s not specified.\n", EXPOSED_SOCKET);
-        exit(1);
-    }
-
     int c;
     while((c = getopt_long(argc, argv, "a:b:c:d:e:f:ghs:", longopts, NULL)) != -1) {
         switch (c) {
@@ -722,6 +711,17 @@ Default is tcp://localhost:5555\n\n"
             default:    /* invalid option */
                 return 0;
         }
+    }
+
+    remote_journal_directory = strdup(getenv(REMOTE_JOURNAL_DIRECTORY));
+    if (!(remote_journal_directory)) {
+        fprintf(stderr, "%s not specified.\n", REMOTE_JOURNAL_DIRECTORY);
+        exit(1);
+    }
+    client_socket_address = getenv(EXPOSED_SOCKET);
+    if (!(client_socket_address)) {
+        fprintf(stderr, "%s not specified.\n", EXPOSED_SOCKET);
+        exit(1);
     }
 
     int major, minor, patch;

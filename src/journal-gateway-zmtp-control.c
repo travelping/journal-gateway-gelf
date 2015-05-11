@@ -122,14 +122,13 @@ static void *input_loop (void *args){
     void *input_handler = zsocket_new (input_ctx, ZMQ_DEALER);
     assert(input_handler);
 
-    if (!getenv(CTRL_TARGET_ENV)) {
-        fprintf(stderr, "%s not specified.\n", CTRL_TARGET_ENV);
-        exit(1);
+    control_socket_adress = getenv(CTRL_TARGET_ENV);
+    if (!control_socket_adress) {
+        fprintf(stderr, "%s not specified, choosing the default (tcp://127.0.0.1:27001)\n", CTRL_TARGET_ENV);
+        control_socket_adress = "tcp://127.0.0.1:27001";
     }
-    if(control_socket_adress != NULL)
-        rc = zsocket_connect (input_handler, control_socket_adress);
-    else
-        rc = zsocket_connect (input_handler, getenv(CTRL_TARGET_ENV));
+
+    rc = zsocket_connect (input_handler, control_socket_adress);
     assert(!rc);
 
     zmq_pollitem_t items[] = {
