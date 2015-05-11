@@ -370,10 +370,6 @@ int set_exposed_port(int port){
 
     // actual change of the port
     int rc;
-    char *endpoint[256];
-    size_t endpoint_len = sizeof(endpoint);
-    rc = zmq_getsockopt(client, ZMQ_LAST_ENDPOINT, endpoint, &endpoint_len);
-    assert ( rc==0 );
     rc = zsocket_unbind(client, client_socket_address);
     if(rc==-1){
     perror("zsocket_unbind");
