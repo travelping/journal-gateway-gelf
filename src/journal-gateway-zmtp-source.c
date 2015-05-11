@@ -76,6 +76,7 @@
 #include "journal-gateway-zmtp.h"
 
 static bool active = true, working_on_query = false;
+char *source_journal_directory;
 /* signal handler function, can be used to interrupt the gateway via keystroke */
 void stop_gateway(int dummy) {
     UNUSED(dummy);
@@ -450,7 +451,7 @@ static void *handler_routine (void *_args) {
 
     /* create and adjust the journal pointer according to the information in args */
     sd_journal *j;
-    sd_journal_open(&j, SD_JOURNAL_LOCAL_ONLY);
+    sd_journal_open_directory(&j, source_journal_directory, 0);
 
     adjust_journal(args, j);
 
@@ -565,6 +566,11 @@ The journal-gateway-zmtp-sink has to expose the given socket.\n\n"
         }
     }
 
+    source_journal_directory = strdup(getenv(SOURCE_JOURNAL_DIRECTORY));
+    if (!(source_journal_directory)) {
+        fprintf(stderr, "%s not specified.\n", SOURCE_JOURNAL_DIRECTORY);
+        exit(1);
+    }
     sd_journal_print(LOG_INFO, "gateway started...");
 
     zctx_t *ctx = zctx_new ();

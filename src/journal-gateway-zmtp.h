@@ -17,6 +17,7 @@
 
 #define TARGET_ADDRESS_ENV "JOURNAL_REMOTE_TARGET"
 #define REMOTE_JOURNAL_DIRECTORY "JOURNAL_REMOTE_DIR"
+#define SOURCE_JOURNAL_DIRECTORY "JOURNAL_SOURCE_DIR"
 #define EXPOSED_SOCKET "EXPOSED_SOCKET"
 
 /* definitions for internal communication between gateway and client */
