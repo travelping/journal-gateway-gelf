@@ -153,7 +153,8 @@ char* make_json_timestamp(char *timestamp){
 	}
 
 	if (0 == strcmp("now", timestamp)) {
-		return "now";
+        char* json_timestamp = strdup("now");
+		return json_timestamp;
 	}
 
     char *json_timestamp = (char *) malloc(sizeof(char) * 21);
@@ -809,7 +810,7 @@ Default is tcp://localhost:5555\n\n"
                 assert(lookup);
                 lookup->sjr = create_log_filestream(client_key);
                 lookup->id_frame = zframe_dup(client_ID);
-                lookup->client_key=client_key;
+                lookup->client_key=strdup(client_key);
                 HASH_ADD_STR(connections, client_key, lookup);
             }
             free(client_key);
