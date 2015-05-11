@@ -1,5 +1,6 @@
 BASE_DIR = .
 SRC_DIR = $(BASE_DIR)/src
+TEST_DIR = $(BASE_DIR)/test
 MISC_DIR = $(BASE_DIR)/misc
 
 # CC = gcc
@@ -13,6 +14,7 @@ default: journal-gateway-zmtp-source journal-gateway-zmtp-sink journal-gateway-z
 source: journal-gateway-zmtp-source
 sink: journal-gateway-zmtp-sink
 control: journal-gateway-zmtp-control
+test: unit_test_sink
 
 journal-gateway-zmtp-source: journal-gateway-zmtp-source.o
 	$(CC) journal-gateway-zmtp-source.o $(LDFLAGS) $(SYSTEMD_LDFLAGS) -o journal-gateway-zmtp-source
@@ -31,6 +33,14 @@ journal-gateway-zmtp-control: journal-gateway-zmtp-control.o
 
 journal-gateway-zmtp-control.o:$(SRC_DIR)/journal-gateway-zmtp-control.c
 	$(CC) $(CFLAGS) $(SRC_DIR)/journal-gateway-zmtp-control.c -o journal-gateway-zmtp-control.o
+
+unit_test_sink: unit_test_sink.o
+	$(CC) unit_test_sink.o $(LDFLAGS) $(SYSTEMD_LDFLAGS)  -o unit_test_sink
+
+unit_test_sink.o:$(TEST_DIR)/unit_test_sink.c
+	$(CC) $(CFLAGS) -I/test $(TEST_DIR)/unit_test_sink.c -o unit_test_sink.o
+
+
 
 clean:
 	rm -f *.o journal-gateway-zmtp-source journal-gateway-zmtp-sink journal-gateway-zmtp-control

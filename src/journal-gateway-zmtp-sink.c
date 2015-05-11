@@ -634,6 +634,7 @@ int execute_command(opcode command_id, json_t *command_arg, zframe_t **response)
     return 1;
 }
 
+#ifndef TEST
 int main ( int argc, char *argv[] ){
 
     struct option longopts[] = {
@@ -833,3 +834,4 @@ Default is tcp://localhost:5555\n\n"
     //benchmark(initial_time, log_counter);
     return 0;
 }
+#endif
