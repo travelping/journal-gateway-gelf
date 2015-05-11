@@ -66,7 +66,9 @@ send_query        | none          |                     | the sink triggers all 
 shutdown          | none          |                     | shuts down the sink
 help              | none          |                     | shows a short version of this table
 1: only usable if listen is deactivated
+
 2: s=a4b70ccdcd4a4fc5a52e168eea246e05;i=1;b=0e7e1cc42bdd4028835611b65f2adc
+
 3: requires input of the form e.g. [["FILTER_1", "FILTER_2"], ["FILTER_3"]] this example reprensents the boolean formula "(FILTER_1 OR FILTER_2) AND (FILTER_3) whereas the content of FILTER_N is matched against the contents of the logs
 
 
@@ -83,9 +85,10 @@ Mode of Operation
           |                |
           |                |
           +-------+--------+
-          +-----+ |
-          |file | |
-          +-----+ | journal_api
+          +-----+ | +-----+
+          |file | | |file |
+          +-----+ | +-----+
+                  | journal_api
                   |
                   |
           +-------+--------+
@@ -102,13 +105,13 @@ Mode of Operation
           |                |                                         |              |
           |                | ZMTP    +------+    +---------------+   |              |
           |                +---------+ ZMTP +----+"gateway-sink" +---+              |
-          |                |         +------+    |uses jrd-remote|   |              |
-          |                |                     +---------------+   |              |
-          |                |                                         |              |
-          +----------------+                                         +-----+--+-----+
-                                                                     +-----+  +-----+
-                                                                     |file |  |file |
-                                                                     +-----+  +-----+
+          |                |         +------+    |uses           |   |              |
+          |                |                     |systemd-journal|   |              |
+          |                |                     |-remote        |   |              |
+          +----------------+                     +---------------+   +-----+--+-----+
+                                                                     +-----+
+                                                                     |file |
+                                                                     +-----+
 
 Installation
 ------------
@@ -157,7 +160,7 @@ env JOURNAL_DIR=/var/log/journal/[machine-id] journal-gateway-zmtp-sink
 
 This way the gateway can access this journal files and will forward them to the next sink.
 
-### gateway
+### gateway-source
 
 Installing the gateway will also install a service file to execute the gateway as a systemd unit:
 
@@ -183,7 +186,7 @@ Start the sink:
 ```bash
 env JOURNAL_DIR=~/logs/remote/ journal-gateway-zmtp-sink --listen
 ```
-Start the gateway:
+Start the source:
 ```bash
 env TARGET_ADDR=tcp://127.0.0.1:5555 journal-gateway-zmtp-source
 ```
