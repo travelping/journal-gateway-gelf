@@ -573,6 +573,11 @@ The journal-gateway-zmtp-sink has to expose the given socket.\n\n"
     }
     sd_journal_print(LOG_INFO, "gateway started...");
 
+    int major, minor, patch;
+    zmq_version(&major, &minor, &patch);
+
+    printf("Uses ZMQ version %d.%d.%d\n", major, minor, patch);
+
     zctx_t *ctx = zctx_new ();
 
     // /* for stopping the gateway via keystroke (ctrl-c) */
