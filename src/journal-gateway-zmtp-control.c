@@ -30,11 +30,9 @@
 #include "journal-gateway-zmtp-control.h"
 
 
-int more_input = 1;
 
 void stop_handler(int dummy) {
     UNUSED(dummy);
-    more_input = 0;
 }
 
 static void s_catch_signals (){
@@ -138,8 +136,8 @@ static void *input_loop (void *args){
     // input loop
     rc = 0;
     char *command, *argument;
-    while (more_input){
-        fprintf(stdout, "Input commands to change configuration of the Gateway\n");
+    do{
+        fprintf(stdout, "Input commands to change configuration of the Gateway (to get an overview about all possible inputs, type \"help\".\n");
         parse_command(&command, &argument);
         // send command to main thread
         rc = send_command(input_handler, command, argument);
@@ -152,7 +150,6 @@ static void *input_loop (void *args){
         rc = zmq_poll(items, 1, 5000);
         if(rc == -1){
             // error in zmq poll
-            more_input=0;
         }
         // got a response from the main thread before timeout
         if (items[0].revents & ZMQ_POLLIN){
@@ -176,7 +173,7 @@ static void *input_loop (void *args){
         //cleanup
         free(command);
         free(argument);
-    }
+    }while(false);
 
     //cleanup
     zsocket_destroy(input_ctx, input_handler);
