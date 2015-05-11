@@ -271,7 +271,6 @@ int response_handler(zframe_t* cid, zmsg_t *response, FILE *sjr){
 			zmsg_push(m, cid);
 			zmsg_send (&m, client);
             free(query_string);
-            sd_journal_print(LOG_INFO, "gateway has a new source, ID: %s", client_ID);
         }
         else if( memcmp( frame_data, LOGOFF, strlen(LOGOFF) ) == 0 ){
             sd_journal_print(LOG_INFO, "one source of the gateway logged off, ID: %s", client_ID);
@@ -812,6 +811,7 @@ Default is tcp://localhost:5555\n\n"
                 lookup->id_frame = zframe_dup(client_ID);
                 lookup->client_key=strdup(client_key);
                 HASH_ADD_STR(connections, client_key, lookup);
+                sd_journal_print(LOG_INFO, "gateway has a new source, ID: %s", client_key);
             }
             free(client_key);
             lookup->time_last_message = get_clock_time();
