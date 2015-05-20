@@ -394,7 +394,8 @@ int execute_command(opcode command_id, json_t *command_arg, zframe_t **response)
     }
     return 1;
 }
-void set_matches(json_t *json_args, char *key, RequestMeta *args){
+
+void set_matches(json_t *json_args, char *key){
     json_t *json_array = json_object_get(json_args, key);
     if( json_array != NULL ){
 
@@ -490,26 +491,12 @@ uint64_t get_arg_date(json_t *json_args, char *key){
     /* follows the human readable form "2012-04-23T18:25:43.511Z" */
     json_t *json_date = json_object_get(json_args, key);
     if( json_date != NULL ){
-        const char *string = json_string_value(json_date);
-        char string_cpy[strlen(string)+1];
-        strcpy(string_cpy, string);
-
-        /* decode the json date to unix epoch time, milliseconds are not considered */
-        struct tm tm;
-        time_t t;
-        char *ptr = strtok(string_cpy, "T.");
-        strptime_l(ptr, "%Y-%m-%d", &tm, 0);
-        ptr = strtok(NULL, "T.");
-        strptime_l(ptr, "%H:%M:%S", &tm, 0);
-        tm.tm_isdst = -1;
-
-        t = mktime(&tm) * 1000000;      // this time needs to be adjusted by 1000000 to fit the journal time
-
-        return (uint64_t) t;
+        return get_timestamp_from_jstring(json_date);
     }
     else{
         return -1;
     }
+    json_decref(json_date);
 }
 
 /* fill a RequestMeta structure with the information from the query_string */
@@ -527,7 +514,6 @@ RequestMeta *parse_json(zmsg_t* query_msg){
         return NULL;
 
     /* fill args with arguments from json input */
-    RequestMeta *args = malloc( sizeof(RequestMeta) );
     args->format = get_arg_string(json_args, "format");
     args->at_most = get_arg_int(json_args, "at_most");
     //args->since_timestamp = get_arg_date(json_args, "since_timestamp");
@@ -540,7 +526,7 @@ RequestMeta *parse_json(zmsg_t* query_msg){
     args->discrete = get_arg_bool(json_args, "discrete");
     args->boot = get_arg_bool(json_args, "boot");
     args->field = get_arg_string(json_args, "field");
-    set_matches(json_args, "field_matches", args);
+    set_matches(json_args, "field_matches");
     args->reverse = get_arg_bool(json_args, "reverse");
 
     /* there are some dependencies between certain attributes, these can be set here */
@@ -577,7 +563,7 @@ void send_flag(void *socket, zctx_t *ctx, char *flag){
         zctx_destroy (&ctx);
 }
 
-void adjust_journal(RequestMeta *args, sd_journal *j){
+void adjust_journal(sd_journal *j){
     /* initial position will be seeked, don't forget to 'next'  or 'previous' the journal pointer */
     if ( args->reverse == true && args->until_cursor != NULL)
         sd_journal_seek_cursor( j, args->until_cursor );
@@ -593,6 +579,7 @@ void adjust_journal(RequestMeta *args, sd_journal *j){
         sd_journal_seek_head( j );
 
     /* field matches conditions */
+    sd_journal_flush_matches( j );
     size_t i,k;
     Clause *clause;
     for(i=0;i<args->n_clauses;i++){
@@ -604,7 +591,7 @@ void adjust_journal(RequestMeta *args, sd_journal *j){
     }
 }
 
-int check_args(sd_journal *j, RequestMeta *args, uint64_t realtime_usec, uint64_t monotonic_usec){
+int check_args(sd_journal *j, uint64_t realtime_usec, uint64_t monotonic_usec){
     UNUSED(monotonic_usec);
     if( ( args->reverse == true && args->since_cursor != NULL && sd_journal_test_cursor ( j, args->since_cursor ) )
         || ( args->reverse == false && args->until_cursor != NULL && sd_journal_test_cursor ( j, args->until_cursor ) )
@@ -615,7 +602,7 @@ int check_args(sd_journal *j, RequestMeta *args, uint64_t realtime_usec, uint64_
         return 0;
 }
 
-char *get_entry_string(sd_journal *j, RequestMeta *args, char** entry_string, size_t* entry_string_size){
+char *get_entry_string(sd_journal *j, char** entry_string, size_t* entry_string_size){
 
     const void *data;
     size_t length;
@@ -644,7 +631,7 @@ char *get_entry_string(sd_journal *j, RequestMeta *args, char** entry_string, si
     sprintf ( monotonic_usec_string, "%" PRId64 , monotonic_usec );
 
     /* check against args if this entry should be sent */
-    if (check_args( j, args, realtime_usec, monotonic_usec) == 1){
+    if (check_args( j, realtime_usec, monotonic_usec) == 1){
         free(cursor);
         *entry_string = END;
         *entry_string_size = strlen(END);
@@ -725,7 +712,7 @@ void benchmark( uint64_t initial_time, int log_counter ) {
 }
 #endif
 
-void send_flag_wrapper (sd_journal *j, RequestMeta *args, void *socket, zctx_t *ctx, const char *message, char *flag) {
+void send_flag_wrapper (sd_journal *j, void *socket, zctx_t *ctx, const char *message, char *flag) {
     sd_journal_print(LOG_DEBUG, message);
     send_flag(socket, ctx, flag);
     sd_journal_close( j );
@@ -733,8 +720,9 @@ void send_flag_wrapper (sd_journal *j, RequestMeta *args, void *socket, zctx_t *
     return;
 }
 
-static void *handler_routine (void *_args) {
-    RequestMeta *args = (RequestMeta *) _args;
+
+static void *handler_routine (void *inp) {
+    UNUSED(inp);
     zctx_t *ctx = zctx_new ();
     s_catch_signals();
     void *query_handler = zsocket_new (ctx, ZMQ_DEALER);
@@ -759,7 +747,7 @@ static void *handler_routine (void *_args) {
     sd_journal *j;
     sd_journal_open_directory(&j, source_journal_directory, 0);
 
-    adjust_journal(args, j);
+    adjust_journal(j);
 
     int loop_counter = args->at_most;
 
@@ -771,7 +759,7 @@ static void *handler_routine (void *_args) {
 
         rc = zmq_poll (items, 1, 0);
         if( rc == -1 ){
-            send_flag_wrapper (j, args, query_handler, ctx, "error in zmq poll", ERROR);
+            send_flag_wrapper (j, query_handler, ctx, "error in zmq poll", ERROR);
             return NULL;
         }
 
@@ -779,7 +767,7 @@ static void *handler_routine (void *_args) {
             char *client_msg = zstr_recv (query_handler);
             if( strcmp(client_msg, STOP) == 0 ){
                 /* client wants no more logs */
-                send_flag_wrapper (j, args, query_handler, ctx, "confirmed stop", STOP);
+                send_flag_wrapper (j, query_handler, ctx, "confirmed stop", STOP);
                 free (client_msg);
                 working_on_query = false;
                 return NULL;
@@ -803,9 +791,9 @@ static void *handler_routine (void *_args) {
         if( rc == 1 ){
             size_t entry_string_size;
             char *entry_string;
-            get_entry_string( j, args, &entry_string, &entry_string_size );
+            get_entry_string( j, &entry_string, &entry_string_size );
             if ( memcmp(entry_string, END, strlen(END)) == 0 ){
-                send_flag_wrapper (j, args, query_handler, ctx, "query finished successfully", END);
+                send_flag_wrapper (j, query_handler, ctx, "query finished successfully", END);
                 return NULL;
             }
             else if ( memcmp(entry_string, ERROR, strlen(ERROR)) == 0 ){
@@ -827,12 +815,12 @@ static void *handler_routine (void *_args) {
         }
         /* in case moving the journal pointer around produced an error */
         else if ( rc < 0 ){
-            send_flag_wrapper (j, args, query_handler, ctx, "journald API produced error", ERROR);
+            send_flag_wrapper (j, query_handler, ctx, "journald API produced error", ERROR);
             return NULL;
         }
         /* query finished, send END and close the thread */
         else {
-            send_flag_wrapper (j, args, query_handler, ctx, "query finished successfully", END);
+            send_flag_wrapper (j, query_handler, ctx, "query finished successfully", END);
             //benchmark(initial_time, log_counter);
             return NULL;
         }
@@ -842,7 +830,7 @@ static void *handler_routine (void *_args) {
     }
 
     /* the at_most option can limit the amount of sent logs */
-    send_flag_wrapper (j, args, query_handler, ctx, "query finished successfully", END);
+    send_flag_wrapper (j, query_handler, ctx, "query finished successfully", END);
     //benchmark(initial_time, log_counter);
     return NULL;
 }
