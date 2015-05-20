@@ -565,7 +565,7 @@ int main (int argc, char *argv[]){
 "journal-gateway-zmtp-source -- sending logs from systemd's journal over the network\n\
 Usage: journal-gateway-zmtp-source [--help]\n\n\
 \t--help \t\twill show this\n\n\
-To set a socket to connect to a gateway sink set the TARGET_ADDRESS_ENV (must be usable by ZeroMQ)\n\
+To set a socket to connect to a gateway sink set the JOURNAL_REMOTE_TARGET (must be usable by ZeroMQ)\n\
 The journal-gateway-zmtp-sink has to expose the given socket.\n\n"
                 );
                 return 0;
@@ -581,7 +581,7 @@ The journal-gateway-zmtp-sink has to expose the given socket.\n\n"
 
     source_journal_directory = strdup_nullok(getenv(ENV_JOURNAL_SOURCE_DIRECTORY));
     if (!(source_journal_directory)) {
-        fprintf(stderr, "%s not specified.\n", SOURCE_JOURNAL_DIRECTORY);
+        fprintf(stderr, "%s not specified.\n", ENV_JOURNAL_SOURCE_DIRECTORY);
         exit(1);
     }
     gateway_socket_address = strdup_nullok(getenv(ENV_LOG_TARGET_SOCKET));

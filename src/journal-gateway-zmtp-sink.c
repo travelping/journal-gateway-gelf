@@ -726,7 +726,7 @@ Usage: journal-gateway-zmtp-sink   [--help] [--since] [--until]\n\
 \t\t\twhereas the content of FILTER_N is matched against the contents of the logs;\n\
 \t\t\tExample: --filter [[\\\"PRIORITY=3\\\"]] only shows logs with exactly priority 3 \n\n\
 The sink is used to wait for incomming messages from journal-gateway-zmtp-source via exposing a socket.\n\
-Set this socket via setting EXPOSED_SOCKET environment variable (must be usable by ZeroMQ).\n\
+Set this socket via setting GATEWAY_LOG_PEER environment variable (must be usable by ZeroMQ).\n\
 Default is tcp://localhost:5555\n\n"
                 );
                 return 0;
@@ -742,12 +742,12 @@ Default is tcp://localhost:5555\n\n"
 
     remote_journal_directory = strdup_nullok(getenv(ENV_REMOTE_JOURNAL_DIRECTORY));
     if (!(remote_journal_directory)) {
-        fprintf(stderr, "%s not specified.\n", REMOTE_JOURNAL_DIRECTORY);
+        fprintf(stderr, "%s not specified.\n", ENV_REMOTE_JOURNAL_DIRECTORY);
         exit(1);
     }
     client_socket_address = strdup_nullok(getenv(ENV_LOG_EXPOSED_SOCKET));
     if (!(client_socket_address)) {
-        fprintf(stderr, "%s not specified.\n", EXPOSED_SOCKET);
+        fprintf(stderr, "%s not specified.\n", ENV_LOG_EXPOSED_SOCKET);
         exit(1);
     }
 

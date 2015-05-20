@@ -114,19 +114,19 @@ static void *input_loop (void *args){
     /* for stopping the client and the gateway handler via keystroke (ctrl-c) */
     s_catch_signals();
 
-    char *control_socket_adress = NULL;
+    char *control_peer_target = NULL;
     int rc;
 
     void *input_handler = zsocket_new (input_ctx, ZMQ_DEALER);
     assert(input_handler);
 
-    control_socket_adress = getenv(CTRL_TARGET_ENV);
-    if (!control_socket_adress) {
-        fprintf(stderr, "%s not specified, choosing the default (tcp://127.0.0.1:27001)\n", CTRL_TARGET_ENV);
-        control_socket_adress = "tcp://127.0.0.1:27001";
+    control_peer_target = getenv(ENV_CTRL_TARGET);
+    if (!control_peer_target) {
+        fprintf(stderr, "%s not specified, choosing the default (%s)\n", ENV_CTRL_TARGET, DEFAULT_CONTROL_TARGET);
+        control_peer_target = DEFAULT_CONTROL_TARGET;
     }
 
-    rc = zsocket_connect (input_handler, control_socket_adress);
+    rc = zsocket_connect (input_handler, control_peer_target);
     assert(!rc);
 
     zmq_pollitem_t items[] = {

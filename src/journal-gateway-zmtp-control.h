@@ -4,5 +4,5 @@
 #define CTRL_LOGOFF "\003"	// stop connection
 #define CTRL_UKCOM "\005" // signals that the received command was not understood (unknown)
 #define CTRL_ACCEPTED "\006" // signals the the received command was accepted
-#define DEFAULT_CONTROL_SOCKET "tcp://*:27001"
-#define CTRL_TARGET_ENV "GATEWAY_CONTROL_TARGET"
+#define DEFAULT_CONTROL_TARGET "tcp://127.0.0.1:27001"
+#define ENV_CTRL_TARGET "GATEWAY_CONTROL_TARGET"
