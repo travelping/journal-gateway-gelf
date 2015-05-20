@@ -31,6 +31,7 @@
 
 #include "uthash/uthash.h"
 #include "journal-gateway-zmtp.h"
+#include "journal-gateway-zmtp-sink.h"
 #include "journal-gateway-zmtp-control.h"
 
 #define KEYDATA(KEY) .key=KEY, .keylen=sizeof(KEY)

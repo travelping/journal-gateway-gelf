@@ -74,6 +74,7 @@
 #include <errno.h>
 
 #include "journal-gateway-zmtp.h"
+#include "journal-gateway-zmtp-source.h"
 
 static bool active = true, working_on_query = false;
 char *source_journal_directory;
