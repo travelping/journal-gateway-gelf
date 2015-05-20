@@ -728,8 +728,7 @@ static void *handler_routine (void *inp) {
     void *query_handler = zsocket_new (ctx, ZMQ_DEALER);
 	assert(query_handler);
     //zsocket_set_sndhwm (query_handler, HANDLER_HWM);
-    int rc = zsocket_connect (query_handler, BACKEND_SOCKET);
-	assert(!rc);
+    int rc = zsocket_bind (query_handler, BACKEND_SOCKET);
 
     /* send READY to the client */
     send_flag(query_handler, NULL, READY );
@@ -967,7 +966,8 @@ The journal-gateway-zmtp-sink has to expose the given socket.\n\n"
     assert(backend);
     //zsocket_set_sndhwm (backend, GATEWAY_HWM);
     //zsocket_set_rcvhwm (backend, GATEWAY_HWM);
-    zsocket_bind (backend, BACKEND_SOCKET);
+    rc = zsocket_connect (backend, BACKEND_SOCKET);
+    assert(rc == 0);
 
     router_control = zsocket_new(ctx, ZMQ_ROUTER);
     assert(router_control);
