@@ -3,6 +3,10 @@ journal-gateway-zmtp
 
 A gateway for transmitting of systemds journal via a zmtp connection.
 
+Version 0.9.1 - 20 May 2015
+---------------------------
+
+* The Source is now configurable in runtime
 
 Version 0.9.0 - 11 May 2015
 ---------------------------
