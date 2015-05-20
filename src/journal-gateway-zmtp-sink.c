@@ -38,6 +38,7 @@
 
 static zctx_t *ctx;
 static void *client, *router_control;
+static bool active = true;
 uint64_t initial_time;
 
 /* cli arguments */
@@ -166,12 +167,11 @@ char* strdup_nullok(const char* inp){
 char* make_json_timestamp(char *timestamp){
     if (timestamp == NULL) {
         return NULL;
-	}
+    }
 
-	if (0 == strcmp("now", timestamp)) {
+    if (0 == strcmp("now", timestamp)) {
         char* json_timestamp = strdup("now");
-		return json_timestamp;
-	}
+        return json_timestamp;
 
     char *json_timestamp = (char *) malloc(sizeof(char) * 21);
     json_timestamp[0] = '\0';
@@ -221,7 +221,6 @@ void benchmark(uint64_t initial_time, int log_counter) {
         log_counter, time_diff_sec, log_rate_sec);
 }
 
-static bool active = true;
 void stop_handler(int dummy) {
     UNUSED(dummy);
     int rc;
@@ -478,24 +477,26 @@ void show_help(char *ret){
 "Usage: Type in one of the following commands and \n\
 optional arguments (space separated), confirm your input by pressing enter\n\n\
 \thelp\t\t\twill show this\n\
-\tsince_timestamp\t\trequires a timestamp with a format like \"2014-10-01 18:00:00\"\n\
-\tuntil_timestamp\t\tsee --since_timestamp\n\
-\tsince_cursor\t\trequires a log cursor, see e.g. 'journalctl -o export'\n\
-\tuntil_cursor\t\tsee --since_cursor\n\
-\tat_most\t\t\trequires a positive integer N, at most N logs will be sent\n\
-\tfollow\t\t\tlike 'journalctl -f', follows the remote journal\n\
-\tlisten\t\t\tthe sink waits indefinitely for incomming messages from sources\n\
-\treverse\t\t\treverses the log stream such that newer logs will be sent first\n\
-\tfilter\t\t\trequires input of the form e.g. \"[[\"FILTER_1\", \"FILTER_2\"], [\"FILTER_3\"]]\"\n\
-\t\t\t\tthis example reprensents the boolean formula \"(FILTER_1 OR FILTER_2) AND (FILTER_3)\"\n\
-\t\t\t\twhereas the content of FILTER_N is matched against the contents of the logs;\n\
-\t\t\t\tExample: --filter [[\"PRIORITY=3\"]] only shows logs with exactly priority 3 \n\
+\tto change the default filter which are applied to new sources (or manually triggered) choose the following options:\n\
+\t\tsince_timestamp\t\trequires a timestamp with a format like \"2014-10-01 18:00:00\"\n\
+\t\tuntil_timestamp\t\tsee --since_timestamp\n\
+\t\tsince_cursor\t\trequires a log cursor, see e.g. 'journalctl -o export'\n\
+\t\tuntil_cursor\t\tsee --since_cursor\n\
+\t\tat_most\t\t\trequires a positive integer N, at most N logs will be sent\n\
+\t\tfollow\t\t\tlike 'journalctl -f', follows the remote journal\n\
+\t\tlisten\t\t\tthe sink waits indefinitely for incomming messages from sources\n\
+\t\treverse\t\t\treverses the log stream such that newer logs will be sent first\n\
+\t\tfilter\t\t\trequires input of the form e.g. \"[[\"FILTER_1\", \"FILTER_2\"], [\"FILTER_3\"]]\"\n\
+\t\t\t\t\tthis example reprensents the boolean formula \"(FILTER_1 OR FILTER_2) AND (FILTER_3)\"\n\
+\t\t\t\t\twhereas the content of FILTER_N is matched against the contents of the logs;\n\
+\t\t\t\t\tExample: --filter [[\"PRIORITY=3\"]] only shows logs with exactly priority 3 \n\
 \tshow_filter\t\tshows the current filters (see above)\n\
-\tset_exposed_port\trequires a valid tcp port\n\
-\tset_log_directory\trequires a path to a directory\n\
-\tshow_sources\t\tshows the connected sources\n\
-\tshow_diskusage\t\tshows the used space of the selected directory (in bytes)\n\
 \tsend_query\t\ttriggers all sources to send logs coresponding to the current set of filters\n\
+\n\
+\tset_exposed_port\trequires a valid tcp port\n\
+\tshow_sources\t\tshows the connected sources\n\
+\tset_log_directory\trequires a path to a directory\n\
+\tshow_diskusage\t\tshows the used space of the selected directory (in bytes)\n\
 \tshutdown\t\tstops the gateway\
 \n\n"
     );
@@ -524,7 +525,7 @@ void send_query(){
     //waiting for source to finish old query
     sleep(1);
     send_stop();
-    //waiting for source to finish old query
+    //waiting for source to finish this stop query
     sleep(1);
     char *query_string = build_query_string();
     zmsg_t *m;
@@ -781,7 +782,6 @@ Default is tcp://localhost:5555\n\n"
     // setup of control connection
     router_control = zsocket_new(ctx, ZMQ_ROUTER);
     assert(router_control);
-
     rc = zsocket_bind (router_control, control_socket_address);
     assert(rc);
 

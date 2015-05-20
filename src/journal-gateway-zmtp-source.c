@@ -984,9 +984,8 @@ The journal-gateway-zmtp-sink has to expose the given socket.\n\n"
     send_flag(frontend, NULL, LOGON );
 
 
-    zmsg_t *msg;
-    zframe_t *handler_ID = NULL;
-    RequestMeta *args;
+    zmsg_t *msg, *response;
+    zframe_t *handler_ID = NULL, *client_ID;
     while ( active ) {
         rc=zmq_poll (items, 3, 60000);
 
@@ -1010,7 +1009,7 @@ The journal-gateway-zmtp-sink has to expose the given socket.\n\n"
                 args = parse_json(msg);
                 /* if query is valid open query handler and pass args to it */
                 if (args != NULL) {
-                    zthread_new (handler_routine, (void *) args);
+                    zthread_new (handler_routine, 0);
                 }
                 /* if args was invalid answer with error */
                 else {
@@ -1024,17 +1023,12 @@ The journal-gateway-zmtp-sink has to expose the given socket.\n\n"
                 zframe_t *hid_dup = zframe_dup(handler_ID);
                 zmsg_push(msg, hid_dup);
                 zmsg_send(&msg, backend);
-                // zframe_t *notification = zmsg_pop(msg);
-                // void *notification_data = zframe_data(notification);
-                // size_t notification_size = zframe_size(notification);
-                // if( memcmp( notification_data, STOP, strlen(STOP) )){
-                // }
             }
         }
 
         // received a message from the query handler
         if (items[1].revents & ZMQ_POLLIN) {
-            zmsg_t *response = zmsg_recv (backend);
+            response = zmsg_recv (backend);
 
             handler_ID = zmsg_pop (response);
             zframe_t *handler_response = zmsg_last (response);
