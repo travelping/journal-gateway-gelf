@@ -750,6 +750,12 @@ Default is tcp://localhost:5555\n\n"
         fprintf(stderr, "%s not specified.\n", ENV_LOG_EXPOSED_SOCKET);
         exit(1);
     }
+    control_socket_address = strdup_nullok(getenv(ENV_CTRL_EXPOSED_SOCKET));
+    if (!(control_socket_address)){
+        fprintf(stderr, "%s not specified, choosing the default (%s)\n",
+            ENV_CTRL_EXPOSED_SOCKET, DEFAULT_CTRL_EXPOSED_SOCKET);
+        control_socket_address = DEFAULT_CTRL_EXPOSED_SOCKET;
+    }
 
     int major, minor, patch;
     zmq_version(&major, &minor, &patch);
@@ -769,19 +775,14 @@ Default is tcp://localhost:5555\n\n"
     signal(SIGINT, stop_handler);
 
     int rc;
-    if(client_socket_address != NULL)
-        rc = zsocket_bind (client, client_socket_address);
-    else
-        rc = zsocket_bind (client, DEFAULT_FRONTEND_SOCKET);
+    rc = zsocket_bind (client, client_socket_address);
     assert(rc);
 
+    // setup of control connection
     router_control = zsocket_new(ctx, ZMQ_ROUTER);
     assert(router_control);
 
-    if(control_socket_address != NULL)
-        rc = zsocket_bind (router_control, control_socket_address);
-    else
-        rc = zsocket_bind (router_control, DEFAULT_CONTROL_SOCKET);
+    rc = zsocket_bind (router_control, control_socket_address);
     assert(rc);
 
     zmq_pollitem_t items [] = {

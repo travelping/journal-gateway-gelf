@@ -589,6 +589,14 @@ The journal-gateway-zmtp-sink has to expose the given socket.\n\n"
         fprintf(stderr, "%s not specified.\n", ENV_LOG_TARGET_SOCKET);
         exit(1);
     }
+    control_socket_address = strdup_nullok(getenv(ENV_CTRL_EXPOSED_SOCKET));
+    if (!(control_socket_address)){
+        fprintf(stderr, "%s not specified, choosing the default (%s)\n",
+            ENV_CTRL_EXPOSED_SOCKET, DEFAULT_CTRL_EXPOSED_SOCKET);
+        control_socket_address = DEFAULT_CTRL_EXPOSED_SOCKET;
+    }
+
+    args = malloc( sizeof(RequestMeta) );
 
     sd_journal_print(LOG_INFO, "gateway started...");
 
@@ -602,16 +610,16 @@ The journal-gateway-zmtp-sink has to expose the given socket.\n\n"
     // /* for stopping the gateway via keystroke (ctrl-c) */
     s_catch_signals();
 
+    int rc;
+
     // Socket to talk to clients
     void *frontend = zsocket_new (ctx, ZMQ_DEALER);
     assert(frontend);
     //zsocket_set_sndhwm (frontend, GATEWAY_HWM);
     //zsocket_set_rcvhwm (frontend, GATEWAY_HWM);
 
-    if(gateway_socket_address != NULL)
-        zsocket_connect (frontend, gateway_socket_address);
-    else
-        zsocket_connect (frontend, getenv(TARGET_ADDRESS_ENV));
+    rc = zsocket_connect (frontend, gateway_socket_address);
+    assert(rc == 0);
 
     // Socket to talk to the query handlers
     void *backend = zsocket_new (ctx, ZMQ_ROUTER);
@@ -632,7 +640,6 @@ The journal-gateway-zmtp-sink has to expose the given socket.\n\n"
     zmsg_t *msg;
     zframe_t *handler_ID = NULL;
     RequestMeta *args;
-    int rc;
     while ( active ) {
         rc=zmq_poll (items, 2, 60000);
 
