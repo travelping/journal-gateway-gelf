@@ -108,6 +108,17 @@ char *get_arg_string(json_t *json_args, char *key){
     }
 }
 
+char* strdup_nullok(const char* inp){
+    char *ret;
+    if(!inp){
+        ret = NULL;
+    }
+    else{
+        ret = strdup(inp);
+    }
+    return ret;
+}
+
 void set_matches(json_t *json_args, char *key, RequestMeta *args){
     json_t *json_array = json_object_get(json_args, key);
     if( json_array != NULL ){
@@ -568,13 +579,14 @@ The journal-gateway-zmtp-sink has to expose the given socket.\n\n"
         }
     }
 
-    source_journal_directory = strdup(getenv(SOURCE_JOURNAL_DIRECTORY));
+    source_journal_directory = strdup_nullok(getenv(ENV_JOURNAL_SOURCE_DIRECTORY));
     if (!(source_journal_directory)) {
         fprintf(stderr, "%s not specified.\n", SOURCE_JOURNAL_DIRECTORY);
         exit(1);
     }
-    if (!getenv(TARGET_ADDRESS_ENV)) {
-        fprintf(stderr, "%s not specified.\n", TARGET_ADDRESS_ENV);
+    gateway_socket_address = strdup_nullok(getenv(ENV_LOG_TARGET_SOCKET));
+    if (!gateway_socket_address) {
+        fprintf(stderr, "%s not specified.\n", ENV_LOG_TARGET_SOCKET);
         exit(1);
     }
 

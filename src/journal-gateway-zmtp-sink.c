@@ -39,7 +39,6 @@
 static zctx_t *ctx;
 static void *client, *router_control;
 uint64_t initial_time;
-int heartbeating = HEARTBEATING;
 
 /* cli arguments */
 int     reverse=0, at_most=-1, follow=0, listening=0;
@@ -145,6 +144,17 @@ FILE* create_log_filestream(char *client_key){
     sprintf (pathtojournalfile, sjr_cmd_format, remote_journal_directory, journalname);
     ret = popen(pathtojournalfile, "w");
     assert(ret);
+    return ret;
+}
+
+char* strdup_nullok(const char* inp){
+    char *ret;
+    if(!inp){
+        ret = NULL;
+    }
+    else{
+        ret = strdup(inp);
+    }
     return ret;
 }
 
@@ -261,7 +271,6 @@ int response_handler(zframe_t* cid, zmsg_t *response, FILE *sjr){
             ret = -1;
             break;
         }
-        else if( memcmp( frame_data, HEARTBEAT, strlen(HEARTBEAT) ) == 0 ) NULL;
         else if( memcmp( frame_data, TIMEOUT, strlen(TIMEOUT) ) == 0 ) NULL;
         else if( memcmp( frame_data, READY, strlen(READY) ) == 0 ) NULL;
         else if( memcmp( frame_data, STOP, strlen(STOP) ) == 0 ){
@@ -691,10 +700,6 @@ int main ( int argc, char *argv[] ){
             case 'e':
                 until_cursor = optarg;
                 break;
-            case 'g':
-                follow = 1;
-                heartbeating = 1;
-                break;
             case 'i':
                 filter = optarg;
                 break;
@@ -735,12 +740,12 @@ Default is tcp://localhost:5555\n\n"
         }
     }
 
-    remote_journal_directory = strdup(getenv(REMOTE_JOURNAL_DIRECTORY));
+    remote_journal_directory = strdup_nullok(getenv(ENV_REMOTE_JOURNAL_DIRECTORY));
     if (!(remote_journal_directory)) {
         fprintf(stderr, "%s not specified.\n", REMOTE_JOURNAL_DIRECTORY);
         exit(1);
     }
-    client_socket_address = getenv(EXPOSED_SOCKET);
+    client_socket_address = strdup_nullok(getenv(ENV_LOG_EXPOSED_SOCKET));
     if (!(client_socket_address)) {
         fprintf(stderr, "%s not specified.\n", EXPOSED_SOCKET);
         exit(1);
