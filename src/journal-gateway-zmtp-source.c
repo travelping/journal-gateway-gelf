@@ -91,7 +91,7 @@ void set_matches(json_t *json_args, char *key);
 /* signal handler function, can be used to interrupt the gateway via keystroke */
 void stop_gateway(int dummy) {
     UNUSED(dummy);
-    sd_journal_print(LOG_INFO, "stopping the gateway...");
+    sd_journal_print(LOG_INFO, "stopping the gateway source...");
     active = false; // stop the gateway
 }
 
@@ -930,8 +930,6 @@ The journal-gateway-zmtp-sink has to expose the given socket.\n\n"
 
     zctx_t *ctx = zctx_new ();
 
-    // /* for stopping the gateway via keystroke (ctrl-c) */
-    s_catch_signals();
 
     int rc;
     // Socket to talk to clients
@@ -968,6 +966,9 @@ The journal-gateway-zmtp-sink has to expose the given socket.\n\n"
 
     zmsg_t *msg, *response;
     zframe_t *handler_ID = NULL, *client_ID;
+
+    // /* for stopping the gateway via keystroke (ctrl-c) */
+    s_catch_signals();
     while ( active ) {
         rc=zmq_poll (items, 3, 60000);
 

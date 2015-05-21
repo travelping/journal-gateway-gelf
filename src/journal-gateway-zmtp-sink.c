@@ -223,24 +223,7 @@ void benchmark(uint64_t initial_time, int log_counter) {
 
 void stop_handler(int dummy) {
     UNUSED(dummy);
-    int rc;
-    zmq_pollitem_t items [] = {
-        { client, 0, ZMQ_POLLIN, 0 },
-    };
-
-    zstr_send (client, STOP);
-    char *frame_string = NULL;
-    do {
-        rc = zmq_poll (items, 1, 1000 * ZMQ_POLL_MSEC);
-        if ( rc == 0 ) break;
-        else{
-            if (frame_string != NULL)
-                free(frame_string);
-            frame_string = zstr_recv(client);
-        }
-    }while( strcmp( frame_string, STOP ) != 0 );
-    if (frame_string != NULL)
-        free(frame_string);
+    sd_journal_print(LOG_INFO, "stopping the gateway sink...");
     active = false;
 }
 
