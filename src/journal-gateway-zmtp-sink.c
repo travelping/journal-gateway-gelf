@@ -172,6 +172,7 @@ char* make_json_timestamp(char *timestamp){
     if (0 == strcmp("now", timestamp)) {
         char* json_timestamp = strdup("now");
         return json_timestamp;
+    }
 
     char *json_timestamp = (char *) malloc(sizeof(char) * 21);
     json_timestamp[0] = '\0';
@@ -221,10 +222,19 @@ void benchmark(uint64_t initial_time, int log_counter) {
         log_counter, time_diff_sec, log_rate_sec);
 }
 
-void stop_handler(int dummy) {
+void stop_gateway(int dummy) {
     UNUSED(dummy);
     sd_journal_print(LOG_INFO, "stopping the gateway sink...");
-    active = false;
+    active = false; // stop the gateway
+}
+
+static void s_catch_signals (){
+    struct sigaction action;
+    action.sa_handler = stop_gateway;
+    action.sa_flags = 0;
+    sigemptyset (&action.sa_mask);
+    sigaction(SIGINT, &action, NULL);
+    sigaction(SIGTERM, &action, NULL);
 }
 
 /* Do sth with the received (log)message */
@@ -639,7 +649,7 @@ int execute_command(opcode command_id, json_t *command_arg, zframe_t **response)
             *response = zframe_new(CTRL_ACCEPTED,strlen(CTRL_ACCEPTED));
             break;
         case CTRL_SHUTDOWN:
-            stop_handler(0);
+            stop_gateway(0);
             *response = zframe_new(CTRL_ACCEPTED,strlen(CTRL_ACCEPTED));
             break;
         default:
@@ -755,8 +765,6 @@ Default is tcp://localhost:5555\n\n"
     assert(client);
     //zsocket_set_rcvhwm (client, CLIENT_HWM);
 
-    /* for stopping the client and the gateway handler via keystroke (ctrl-c) */
-    signal(SIGINT, stop_handler);
 
     int rc;
     rc = zsocket_bind (client, client_socket_address);
@@ -782,6 +790,8 @@ Default is tcp://localhost:5555\n\n"
     zframe_t *client_ID;
     char *client_key;
 
+    // /* for stopping the gateway via keystroke (ctrl-c) */
+    s_catch_signals();
     /* receive controls or logs, initiate connections to new sources */
     while ( active ){
         rc=zmq_poll (items, 2, 100);
@@ -843,7 +853,7 @@ Default is tcp://localhost:5555\n\n"
     zsocket_destroy (ctx, router_control);
     zctx_destroy (&ctx);
 
-    //benchmark(initial_time, log_counter);
+    sd_journal_print(LOG_INFO, "...gateway stopped");
     return 0;
 }
 #endif
