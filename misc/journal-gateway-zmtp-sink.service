@@ -2,10 +2,11 @@
 Description=ZeroMQ logging gateway-sink for Journald.
 
 [Service]
+
 EnvironmentFile=/etc/journal-gateway-zmtp-sink.conf
 ExecStartPre=/bin/mkdir -p $JOURNAL_REMOTE_DIR
 ExecStart=/usr/bin/journal-gateway-zmtp-sink --listen
-ExecStop=/bin/kill -s sigint $MAINPID
+ExecStop=/bin/kill -s SIGTERM $MAINPID
 Restart=on-failure
 
 [Install]
