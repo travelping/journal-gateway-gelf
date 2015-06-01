@@ -25,11 +25,12 @@
 #include <signal.h>
 #include <sys/stat.h>
 #include <errno.h>
-
 #include "journal-gateway-zmtp.h"
 #include "journal-gateway-zmtp-control.h"
 
+#define _GNU_SOURCE
 
+extern char *program_invocation_short_name;
 
 void stop_handler(int dummy) {
     UNUSED(dummy);
@@ -106,12 +107,21 @@ int send_command(void *socket, char *command, char *argument){
     return 1;
 }
 
-// read input from stdin to configure the gateway at runtime
-static void *input_loop (void *args){
-    UNUSED(args);
-    // prepare connection to main thread
+void show_help(){
+    printf("Control tool for the journal-gateway-zmtp-source or -sink\n"
+        "usage: %s [command] [argument]\n"
+        "The target is set via environment variable %s\n"
+        "\n"
+        "\"help\" was sent to the target\n",
+        program_invocation_short_name,
+        ENV_CTRL_TARGET);
+}
+
+int main (int argc, char *argv[]){
+
+    // prepare connection to target
     zctx_t *input_ctx = zctx_new();
-    /* for stopping the client and the gateway handler via keystroke (ctrl-c) */
+    /* for stopping via keystroke ctrl-c*/
     s_catch_signals();
 
     char *control_peer_target = NULL;
@@ -133,56 +143,52 @@ static void *input_loop (void *args){
         { input_handler, 0, ZMQ_POLLIN, 0},
     };
 
-    // input loop
-    rc = 0;
-    char *command, *argument;
-    do{
-        fprintf(stdout, "Input commands to change configuration of the Gateway (to get an overview about all possible inputs, type \"help\".\n");
-        parse_command(&command, &argument);
-        // send command to main thread
-        rc = send_command(input_handler, command, argument);
-        //sending failed, begin anew
-        if(rc == 0){
-            continue;
+    char *command="", *argument="";
+    if (argc==1){
+        command="help";
+        show_help();
+    }
+    else if(argc==2){
+        command=argv[1];
+    }
+    else{
+        command=argv[1];
+        argument=argv[2];
+    }
+    // send command to main thread
+    rc = send_command(input_handler, command, argument);
+    //sending failed, abbort
+    if(rc == 0){
+        return 0;
+    }
+    fprintf(stdout, "%s\n", "Waiting for response from the target");
+    // wait for reaction of the main thread
+    rc = zmq_poll(items, 1, 5000);
+    if(rc == -1){
+        // error in zmq poll
+    }
+    // got a response from the main thread before timeout
+    if (items[0].revents & ZMQ_POLLIN){
+        char *response = zstr_recv(input_handler);
+        if(strcmp(response, CTRL_UKCOM) == 0){
+            fprintf(stdout, "%s\n", "command unknown");
         }
-        fprintf(stdout, "%s\n", "waiting for acceptance of command...");
-        // wait for reaction of the main thread
-        rc = zmq_poll(items, 1, 5000);
-        if(rc == -1){
-            // error in zmq poll
+        else if(strcmp(response, CTRL_ACCEPTED) == 0){
+            fprintf(stdout, "%s\n", "command accepted");
         }
-        // got a response from the main thread before timeout
-        if (items[0].revents & ZMQ_POLLIN){
-            char *response = zstr_recv(input_handler);
-            if(strcmp(response, CTRL_UKCOM) == 0){
-                fprintf(stdout, "%s\n", "command unknown");
-            }
-            else if(strcmp(response, CTRL_ACCEPTED) == 0){
-                fprintf(stdout, "%s\n", "command accepted");
-            }
-            else{
-                fprintf(stdout, "Response:\n%s\n", response);
-            }
-            free(response);
-        }
-        // no response from main thread before timeout
         else{
-            fprintf(stdout, "%s\n", "command not accepted. (timeout)");
+            fprintf(stdout, "Received following response:\n%s\n", response);
         }
-
-        //cleanup
-        free(command);
-        free(argument);
-    }while(false);
+        free(response);
+    }
+    // no response from main thread before timeout
+    else{
+        fprintf(stdout, "%s\n", "Got no response in time.");
+    }
 
     //cleanup
     zsocket_destroy(input_ctx, input_handler);
     zctx_destroy(&input_ctx);
 
-    return NULL;
-}
-
-int main (){
-    input_loop(0);
     return 0;
 }
