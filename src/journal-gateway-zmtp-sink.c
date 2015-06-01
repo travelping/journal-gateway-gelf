@@ -28,14 +28,15 @@
 #include <systemd/sd-id128.h>
 #include <sys/stat.h>
 #include <errno.h>
-
 #include "uthash/uthash.h"
 #include "journal-gateway-zmtp.h"
 #include "journal-gateway-zmtp-sink.h"
 #include "journal-gateway-zmtp-control.h"
 
+#define _GNU_SOURCE
 #define KEYDATA(KEY) .key=KEY, .keylen=sizeof(KEY)
 
+extern char *program_invocation_short_name;
 static zctx_t *ctx;
 static void *client, *router_control;
 static bool active = true;
@@ -44,7 +45,7 @@ uint64_t initial_time;
 /* cli arguments */
 int     reverse=0, at_most=-1, follow=0, listening=0;
 char    *since_timestamp=NULL, *until_timestamp=NULL, *client_socket_address=NULL, *control_socket_address=NULL,
-        *format=NULL, *since_cursor=NULL, *until_cursor=NULL, *filter=NULL,
+        *format=NULL, *since_cursor=NULL, *until_cursor=NULL, *filter=NULL, *new_filter=NULL,
         *remote_journal_directory=NULL;
 
 // constants
@@ -65,23 +66,19 @@ Connection *connections = NULL;
 // structures for controlhandling
 
 typedef enum {
-    FT_REVERSE = 1,
-    FT_AT_MOST,
-    FT_SINCE_TIMESTAMP,
-    FT_UNTIL_TIMESTAMP,
-    FT_SINCE_CURSOR,
-    FT_UNTIL_CURSOR,
-    FT_FOLLOW,
-    FT_FILTER,
-    FT_LISTEN,
+    SHOW_HELP = 1,
+    FILTER_ADD,
+    FILTER_ADD_CONJUNCTION,
+    FILTER_COMMIT,
+    FILTER_FLUSH,
+    FILTER_SHOW,
     SET_EXPOSED_PORT,
-    SET_LOG_DIRECTORY,
-    SHOW_FILTER,
+    SHOW_EXPOSED_PORT,
     SHOW_SOURCES,
+    SET_LOG_DIRECTORY,
+    SHOW_LOG_DIRECTORY,
     SHOW_DISKUSAGE,
-    CTRL_SND_QUERY,
     CTRL_SHUTDOWN,
-    SHOW_HELP
 } opcode;
 
 struct Command{
@@ -91,23 +88,19 @@ struct Command{
 };
 
 static struct Command valid_commands[] = {
-    {.id = FT_REVERSE, KEYDATA("reverse")},
-    {.id = FT_AT_MOST, KEYDATA("at_most")},
-    {.id = FT_SINCE_TIMESTAMP, KEYDATA("since_timestamp")},
-    {.id = FT_UNTIL_TIMESTAMP, KEYDATA("until_timestamp")},
-    {.id = FT_SINCE_CURSOR, KEYDATA("since_cursor")},
-    {.id = FT_UNTIL_CURSOR, KEYDATA("until_cursor")},
-    {.id = FT_FOLLOW, KEYDATA("follow")},
-    {.id = FT_FILTER, KEYDATA("filter")},
-    {.id = FT_LISTEN, KEYDATA("listen")},
+    {.id = SHOW_HELP, KEYDATA("help")},
+    {.id = FILTER_ADD, KEYDATA("filter_add")},
+    {.id = FILTER_ADD_CONJUNCTION, KEYDATA("filter_add_conjunction")},
+    {.id = FILTER_COMMIT, KEYDATA("filter_commit")},
+    {.id = FILTER_FLUSH, KEYDATA("filter_flush")},
+    {.id = FILTER_SHOW, KEYDATA("filter_show")},
     {.id = SET_EXPOSED_PORT, KEYDATA("set_exposed_port")},
-    {.id = SET_LOG_DIRECTORY, KEYDATA("set_log_directory")},
-    {.id = SHOW_FILTER, KEYDATA("show_filter")},
+    {.id = SHOW_EXPOSED_PORT, KEYDATA("show_exposed_port")},
     {.id = SHOW_SOURCES, KEYDATA("show_sources")},
+    {.id = SET_LOG_DIRECTORY, KEYDATA("set_log_directory")},
+    {.id = SHOW_LOG_DIRECTORY, KEYDATA("show_log_directory")},
     {.id = SHOW_DISKUSAGE, KEYDATA("show_diskusage")},
-    {.id = CTRL_SND_QUERY, KEYDATA("send_query")},
     {.id = CTRL_SHUTDOWN, KEYDATA("shutdown")},
-    {.id = SHOW_HELP, KEYDATA("help")}
 };
 
 int execute_command(opcode command_id, json_t *command_arg, zframe_t **response);
@@ -161,8 +154,6 @@ char* strdup_nullok(const char* inp){
 
 /*
     converts input timestamp into format
-
-
 */
 char* make_json_timestamp(char *timestamp){
     if (timestamp == NULL) {
@@ -358,9 +349,161 @@ int control_handler (zmsg_t *command_msg, zframe_t *cid){
     return ret;
 }
 
-/* control API */
+/* control API functions */
 
-/* changing the exposed port and signalling all logged on sources about the change */
+// returns a string with the help dialogue
+void show_help(char *ret){
+    const char *msg =
+        "You are talking with %s \n"
+        "Valid commands are:\n"
+        "\n"
+        "       help                    will show this\n"
+        "\n"
+        "   Changing the logfilters:\n"
+        "   You need to set the desired filters and commit them afterwards\n"
+        "       filter_add [FIELD]      requires input of the form VARIABLE=value\n"
+        "                               successively added filters are ORed together\n"
+        "       filter_add_conjunction  adds an AND to the list of filters, allowing to AND together the filters\n"
+        "       filter_flush            drops all currently set filters\n"
+        "       filter_show             shows the currently set filters\n"
+        "       filter_commit           applys the currently set filters (all sources will only send coresponding messages)\n"
+        "                               WARNING: this will set the same filter on EVERY source\n"
+        "\n"
+        "       set_exposed_port [PORT] requires a valid tcp port (default: tcp://127.0.0.1:5555)\n"
+        "       show_exposed_port       shows the port on which the sink listens for incomming logs\n"
+        "       show_sources            shows the connected sources (characterized as ZMQ connection-IDs)\n"
+        "\n"
+        "       set_log_directory [DIR] sets the directory in which the received logs will be stored\n"
+        "       show_log_directory      show the directory in which the received logs are stored\n"
+        "       show_diskusage          shows the used space of the selected directory (in bytes)\n"
+        "\n"
+        "       shutdown                stops the sink\n"
+        "\n\n";
+    sprintf(ret, msg, program_invocation_short_name);
+}
+
+int filter_add(const char *filter_addition, zframe_t **response){
+    char *filter_prefix, *filter_suffix;
+    int length_new_filter = strlen(new_filter);
+    // new filter
+    if (length_new_filter == 0){
+        filter_prefix = strdup("[[\"");
+        filter_suffix = strdup("\"]]");
+    }
+    // new conjunction
+    else if(new_filter[length_new_filter-3] == '['){
+        filter_prefix = strdup("\"");
+        filter_suffix = strdup("\"]]");
+    }
+    // in "old" conjunction
+    else{
+        filter_prefix = strdup(",\"");
+        filter_suffix = strdup("\"]]");
+    }
+    int length_addition = strlen(filter_addition)+strlen(filter_prefix)+strlen(filter_suffix);
+    size_t new_filter_size = sizeof(char) * (length_new_filter+length_addition+1);
+    char *helper = malloc( new_filter_size );
+    assert(helper);
+    // drop the last 2 characters ']]'
+    strncpy(helper, new_filter, length_new_filter - 2);
+    strcat(helper, filter_prefix);
+    strcat(helper, filter_addition);
+    strcat(helper, filter_suffix);
+    free(new_filter);
+    new_filter = helper;
+    char *stringh = "filter added\n";
+    *response = zframe_new(stringh,strlen(stringh));
+    return 1;
+}
+
+int filter_add_conjunction(zframe_t **response){
+    int length = strlen(new_filter);
+    char *new_suffix = "],[]]";
+    // length + 2 for json formatting symbols ']' , '[' and ','
+    size_t new_filter_size = sizeof(char) * (length+strlen(new_suffix)+1);
+    char *helper = malloc( new_filter_size );
+    assert(helper);
+    strncpy(helper, new_filter, length -2);
+    strcat(helper, new_suffix);
+    free(new_filter);
+    new_filter = helper;
+    char *stringh = "conjunction added\n";
+    *response = zframe_new(stringh,strlen(stringh));
+    return 1;
+}
+
+int filter_flush(zframe_t **response){
+    free(new_filter);
+    new_filter=strdup("[[]]");
+    char *stringh = "filter flushed\n";
+    *response = zframe_new(stringh,strlen(stringh));
+    return 1;
+}
+
+/*
+    returns the set filters in ret
+*/
+int filter_show(zframe_t **response){
+    char *format_1 = "currently applied filter = %s\n";
+    char *format_2 = "new filter (commit to apply) = %s\n";
+    int length = strlen(format_1) + strlen(filter) + strlen(format_2) + strlen(new_filter);
+    char *stringh = malloc(sizeof(char) * (length+1));
+    length = sprintf(stringh,        format_1, filter);
+             sprintf(stringh+length, format_2, new_filter);
+    *response = zframe_new(stringh,strlen(stringh));
+    free(stringh);
+    return 1;
+}
+
+void send_stop(){
+    char *query_string = build_query_string();
+    zmsg_t *m;
+    zframe_t *queryframe, *cid;
+    Connection *i, *tmp;
+    HASH_ITER(hh, connections, i, tmp){
+        m = zmsg_new(); assert(m);
+        queryframe = zframe_new(STOP, strlen(STOP));
+        assert(queryframe);
+        // duplicate id_frame so it won't be destroyed
+        cid = zframe_dup(i->id_frame);
+        assert(cid);
+        zmsg_push(m, queryframe);
+        zmsg_push(m, cid);
+        zmsg_send (&m, client);
+    }
+    free(query_string);
+}
+
+int filter_commit(zframe_t **response){
+    free(filter);
+    filter = strdup(new_filter);
+    //waiting for source to finish old query
+    sleep(1);
+    send_stop();
+    //waiting for source to finish this stop query
+    sleep(1);
+    char *query_string = build_query_string();
+    zmsg_t *m;
+    zframe_t *queryframe, *cid;
+    Connection *i, *tmp;
+    HASH_ITER(hh, connections, i, tmp){
+        m = zmsg_new(); assert(m);
+        queryframe = zframe_new(query_string, strlen(query_string));
+        assert(queryframe);
+        // duplicate id_frame so it won't be destroyed
+        cid = zframe_dup(i->id_frame);
+        assert(cid);
+        zmsg_push(m, queryframe);
+        zmsg_push(m, cid);
+        zmsg_send (&m, client);
+    }
+    free(query_string);
+    char *stringh = "filter commited\n";
+    *response = zframe_new(stringh,strlen(stringh));
+    return 1;
+}
+
+/* changing the exposed port */
 int set_exposed_port(int port){
     int ret = 0;
     // check for valid port
@@ -383,6 +526,12 @@ int set_exposed_port(int port){
     sd_journal_print(LOG_INFO, "Changed exposed port to %s", client_socket_address);
 
     return ret;
+}
+
+/* showing the exposed port */
+int show_exposed_port(zframe_t **response){
+    *response = zframe_new(client_socket_address,strlen(client_socket_address));
+    return 1;
 }
 
 /* changing the directory, in which the remote journals are stored*/
@@ -415,6 +564,11 @@ int set_log_directory(char *new_directory){
     return ret;
 }
 
+int show_log_directory(zframe_t **response){
+    *response = zframe_new(remote_journal_directory,strlen(remote_journal_directory));
+    return 1;
+}
+
 /*
     returns the conected sources as a string, separated by newline
 */
@@ -432,26 +586,6 @@ void show_sources(char *ret){
     }
 }
 
-/*
-    returns the set filters as a string, filters are seperated by newline
-    reverse = 0
-    at_most = -1
-    ...
-*/
-void show_filter(char *ret){
-    //todo check for to long output
-    int length = 0;
-    length += sprintf(ret+length, "reverse = %d\n", reverse);
-    length += sprintf(ret+length, "at_most = %d\n", at_most);
-    length += sprintf(ret+length, "since_timestamp = %s\n", since_timestamp);
-    length += sprintf(ret+length, "until_timestamp = %s\n", until_timestamp);
-    length += sprintf(ret+length, "since_cursor = %s\n", since_cursor);
-    length += sprintf(ret+length, "until_cursor = %s\n", until_cursor);
-    length += sprintf(ret+length, "follow = %d\n", follow);
-    length += sprintf(ret+length, "filter = %s\n", filter);
-    length += sprintf(ret+length, "listen = %d\n", listening);
-}
-
 // returns a string with the used space in bytes
 void show_diskusage(char *ret){
     char du_cmd[2048];
@@ -462,80 +596,6 @@ void show_diskusage(char *ret){
     int rc = fscanf(du, "%s", du_ret);
     assert(rc);
     sprintf(ret, du_ret);
-}
-
-// returns a string with the help dialogue
-void show_help(char *ret){
-    sprintf(ret,
-"Usage: Type in one of the following commands and \n\
-optional arguments (space separated), confirm your input by pressing enter\n\n\
-\thelp\t\t\twill show this\n\
-\tto change the default filter which are applied to new sources (or manually triggered) choose the following options:\n\
-\t\tsince_timestamp\t\trequires a timestamp with a format like \"2014-10-01 18:00:00\"\n\
-\t\tuntil_timestamp\t\tsee --since_timestamp\n\
-\t\tsince_cursor\t\trequires a log cursor, see e.g. 'journalctl -o export'\n\
-\t\tuntil_cursor\t\tsee --since_cursor\n\
-\t\tat_most\t\t\trequires a positive integer N, at most N logs will be sent\n\
-\t\tfollow\t\t\tlike 'journalctl -f', follows the remote journal\n\
-\t\tlisten\t\t\tthe sink waits indefinitely for incomming messages from sources\n\
-\t\treverse\t\t\treverses the log stream such that newer logs will be sent first\n\
-\t\tfilter\t\t\trequires input of the form e.g. \"[[\"FILTER_1\", \"FILTER_2\"], [\"FILTER_3\"]]\"\n\
-\t\t\t\t\tthis example reprensents the boolean formula \"(FILTER_1 OR FILTER_2) AND (FILTER_3)\"\n\
-\t\t\t\t\twhereas the content of FILTER_N is matched against the contents of the logs;\n\
-\t\t\t\t\tExample: --filter [[\"PRIORITY=3\"]] only shows logs with exactly priority 3 \n\
-\tshow_filter\t\tshows the current filters (see above)\n\
-\tsend_query\t\ttriggers all sources to send logs coresponding to the current set of filters\n\
-\n\
-\tset_exposed_port\trequires a valid tcp port\n\
-\tshow_sources\t\tshows the connected sources\n\
-\tset_log_directory\trequires a path to a directory\n\
-\tshow_diskusage\t\tshows the used space of the selected directory (in bytes)\n\
-\tshutdown\t\tstops the gateway\
-\n\n"
-    );
-}
-
-void send_stop(){
-    char *query_string = build_query_string();
-    zmsg_t *m;
-    zframe_t *queryframe, *cid;
-    Connection *i, *tmp;
-    HASH_ITER(hh, connections, i, tmp){
-        m = zmsg_new(); assert(m);
-        queryframe = zframe_new(STOP, strlen(STOP));
-        assert(queryframe);
-        // duplicate id_frame so it won't be destroyed
-        cid = zframe_dup(i->id_frame);
-        assert(cid);
-        zmsg_push(m, queryframe);
-        zmsg_push(m, cid);
-        zmsg_send (&m, client);
-    }
-    free(query_string);
-}
-
-void send_query(){
-    //waiting for source to finish old query
-    sleep(1);
-    send_stop();
-    //waiting for source to finish this stop query
-    sleep(1);
-    char *query_string = build_query_string();
-    zmsg_t *m;
-    zframe_t *queryframe, *cid;
-    Connection *i, *tmp;
-    HASH_ITER(hh, connections, i, tmp){
-        m = zmsg_new(); assert(m);
-        queryframe = zframe_new(query_string, strlen(query_string));
-        assert(queryframe);
-        // duplicate id_frame so it won't be destroyed
-        cid = zframe_dup(i->id_frame);
-        assert(cid);
-        zmsg_push(m, queryframe);
-        zmsg_push(m, cid);
-        zmsg_send (&m, client);
-    }
-    free(query_string);
 }
 
 /*
@@ -571,66 +631,43 @@ int get_arg_int(json_t *arg){
 /*
     apply the specified command, encrypted as ID
     returns 1 on success and 0 else
+    creates response frame which has to be freed by the caller
 */
 int execute_command(opcode command_id, json_t *command_arg, zframe_t **response){
     int port;
     char *dir, stringh[2048];
 
     switch (command_id){
-        case FT_REVERSE:
-            reverse = get_arg_int(command_arg);
-            *response = zframe_new(CTRL_ACCEPTED,strlen(CTRL_ACCEPTED));
+        case FILTER_ADD:
+            filter_add(get_arg_string(command_arg), response);
             break;
-        case FT_AT_MOST:
-            at_most = get_arg_int(command_arg);
-            *response = zframe_new(CTRL_ACCEPTED,strlen(CTRL_ACCEPTED));
+        case FILTER_ADD_CONJUNCTION:
+            filter_add_conjunction(response);
             break;
-        case FT_SINCE_TIMESTAMP:
-            free(since_timestamp);
-            since_timestamp = get_arg_string(command_arg);
-            *response = zframe_new(CTRL_ACCEPTED,strlen(CTRL_ACCEPTED));
+        case FILTER_FLUSH:
+            filter_flush(response);
             break;
-        case FT_UNTIL_TIMESTAMP:
-            free(until_timestamp);
-            until_timestamp = get_arg_string(command_arg);
-            *response = zframe_new(CTRL_ACCEPTED,strlen(CTRL_ACCEPTED));
+        case FILTER_COMMIT:
+            filter_commit(response);
             break;
-        case FT_SINCE_CURSOR:
-            free(since_cursor);
-            since_cursor = get_arg_string(command_arg);
-            *response = zframe_new(CTRL_ACCEPTED,strlen(CTRL_ACCEPTED));
-            break;
-        case FT_UNTIL_CURSOR:
-            free(until_cursor);
-            until_cursor = get_arg_string(command_arg);
-            *response = zframe_new(CTRL_ACCEPTED,strlen(CTRL_ACCEPTED));
-            break;
-        case FT_FOLLOW:
-            follow = get_arg_int(command_arg);
-            *response = zframe_new(CTRL_ACCEPTED,strlen(CTRL_ACCEPTED));
-            break;
-        case FT_FILTER:
-            free(filter);
-            filter = get_arg_string(command_arg);
-            *response = zframe_new(CTRL_ACCEPTED,strlen(CTRL_ACCEPTED));
-            break;
-        case FT_LISTEN:
-            listening = get_arg_int(command_arg);
-            *response = zframe_new(CTRL_ACCEPTED,strlen(CTRL_ACCEPTED));
+        case FILTER_SHOW:
+            filter_show(response);
             break;
         case SET_EXPOSED_PORT:
             port = get_arg_int(command_arg);
             set_exposed_port(port);
             *response = zframe_new(CTRL_ACCEPTED,strlen(CTRL_ACCEPTED));
             break;
+        case SHOW_EXPOSED_PORT:
+            show_exposed_port(response);
+            break;
         case SET_LOG_DIRECTORY:
             dir = get_arg_string(command_arg);
             set_log_directory(dir);
             *response = zframe_new(CTRL_ACCEPTED,strlen(CTRL_ACCEPTED));
             break;
-        case SHOW_FILTER:
-            show_filter(&stringh[0]);
-            *response = zframe_new(stringh,strlen(stringh));
+        case SHOW_LOG_DIRECTORY:
+            show_log_directory(response);
             break;
         case SHOW_SOURCES:
             show_sources(&stringh[0]);
@@ -643,10 +680,6 @@ int execute_command(opcode command_id, json_t *command_arg, zframe_t **response)
         case SHOW_DISKUSAGE:
             show_diskusage(&stringh[0]);
             *response = zframe_new(stringh,strlen(stringh));
-            break;
-        case CTRL_SND_QUERY:
-            send_query();
-            *response = zframe_new(CTRL_ACCEPTED,strlen(CTRL_ACCEPTED));
             break;
         case CTRL_SHUTDOWN:
             stop_gateway(0);
@@ -693,9 +726,6 @@ int main ( int argc, char *argv[] ){
                 break;
             case 'e':
                 until_cursor = optarg;
-                break;
-            case 'i':
-                filter = optarg;
                 break;
             case 'j':
                 listening = 1;
@@ -758,6 +788,11 @@ Default is tcp://localhost:5555\n\n"
 
     /* ensure existence of a machine id */
     check_machine_id();
+
+    /* initialize filter */
+    filter = strdup("[[]]");
+    new_filter = strdup("[[]]");
+
 
     /* initial setup of connection  */
     ctx = zctx_new();
