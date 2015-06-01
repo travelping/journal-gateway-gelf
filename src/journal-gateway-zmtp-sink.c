@@ -388,21 +388,22 @@ void show_help(char *ret){
 
 int filter_add(const char *filter_addition, zframe_t **response){
     char *filter_prefix, *filter_suffix;
-    int length_new_filter = strlen(new_filter);
-    // new filter
-    if (length_new_filter == 0){
-        filter_prefix = strdup("[[\"");
-        filter_suffix = strdup("\"]]");
-    }
+    // drop the last 2 characters ']]'
+    fprintf(stderr, "DBG newfilter %s\n", new_filter);
+    int length_new_filter = strlen(new_filter)-2;
     // new conjunction
-    else if(new_filter[length_new_filter-3] == '['){
-        filter_prefix = strdup("\"");
-        filter_suffix = strdup("\"]]");
+    if(new_filter[length_new_filter-1] == '['){
+        filter_prefix = "\"";
+        filter_suffix = "\"]]";
     }
     // in "old" conjunction
+    else if(new_filter[length_new_filter-1] == '"'){
+        filter_prefix = ",\"";
+        filter_suffix = "\"]]";
+    }
     else{
-        filter_prefix = strdup(",\"");
-        filter_suffix = strdup("\"]]");
+        fprintf(stderr, "%s\n", "erroneus filter inserted, abbort");
+        return 0;
     }
     int length_addition = strlen(filter_addition)+strlen(filter_prefix)+strlen(filter_suffix);
     size_t new_filter_size = sizeof(char) * (length_new_filter+length_addition+1);
@@ -421,9 +422,9 @@ int filter_add(const char *filter_addition, zframe_t **response){
 }
 
 int filter_add_conjunction(zframe_t **response){
-    int length = strlen(new_filter);
     char *new_suffix = "],[]]";
-    // length + 2 for json formatting symbols ']' , '[' and ','
+    // drop the last 2 characters ']]'
+    int length = strlen(new_filter)-2;
     size_t new_filter_size = sizeof(char) * (length+strlen(new_suffix)+1);
     char *helper = malloc( new_filter_size );
     assert(helper);
