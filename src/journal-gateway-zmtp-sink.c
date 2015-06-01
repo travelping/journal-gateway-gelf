@@ -67,11 +67,13 @@ Connection *connections = NULL;
 
 typedef enum {
     SHOW_HELP = 1,
+    HELP,
     FILTER_ADD,
     FILTER_ADD_CONJUNCTION,
     FILTER_COMMIT,
     FILTER_FLUSH,
     FILTER_SHOW,
+    SHOW_FILTER,
     SET_EXPOSED_PORT,
     SHOW_EXPOSED_PORT,
     SHOW_SOURCES,
@@ -88,12 +90,14 @@ struct Command{
 };
 
 static struct Command valid_commands[] = {
-    {.id = SHOW_HELP, KEYDATA("help")},
+    {.id = SHOW_HELP, KEYDATA("show_help")},
+    {.id = HELP, KEYDATA("help")},
     {.id = FILTER_ADD, KEYDATA("filter_add")},
     {.id = FILTER_ADD_CONJUNCTION, KEYDATA("filter_add_conjunction")},
     {.id = FILTER_COMMIT, KEYDATA("filter_commit")},
     {.id = FILTER_FLUSH, KEYDATA("filter_flush")},
     {.id = FILTER_SHOW, KEYDATA("filter_show")},
+    {.id = SHOW_FILTER, KEYDATA("show_filter")},
     {.id = SET_EXPOSED_PORT, KEYDATA("set_exposed_port")},
     {.id = SHOW_EXPOSED_PORT, KEYDATA("show_exposed_port")},
     {.id = SHOW_SOURCES, KEYDATA("show_sources")},
@@ -654,6 +658,9 @@ int execute_command(opcode command_id, json_t *command_arg, zframe_t **response)
         case FILTER_SHOW:
             filter_show(response);
             break;
+        case SHOW_FILTER:
+            filter_show(response);
+            break;
         case SET_EXPOSED_PORT:
             port = get_arg_int(command_arg);
             set_exposed_port(port);
@@ -675,6 +682,10 @@ int execute_command(opcode command_id, json_t *command_arg, zframe_t **response)
             *response = zframe_new(stringh,strlen(stringh));
             break;
         case SHOW_HELP:
+            show_help(&stringh[0]);
+            *response = zframe_new(stringh,strlen(stringh));
+            break;
+        case HELP:
             show_help(&stringh[0]);
             *response = zframe_new(stringh,strlen(stringh));
             break;
