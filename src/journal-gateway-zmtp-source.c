@@ -698,7 +698,6 @@ void send_flag_wrapper (sd_journal *j, void *socket, zctx_t *ctx, const char *me
     sd_journal_print(LOG_DEBUG, message);
     send_flag(socket, ctx, flag);
     sd_journal_close( j );
-    RequestMeta_destruct(args);
     return;
 }
 

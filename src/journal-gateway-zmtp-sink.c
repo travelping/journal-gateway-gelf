@@ -45,7 +45,7 @@ uint64_t initial_time;
 /* cli arguments */
 int     reverse=0, at_most=-1, follow=0, listening=1;
 char    *since_timestamp=NULL, *until_timestamp=NULL, *client_socket_address=NULL, *control_socket_address=NULL,
-        *format=NULL, *since_cursor=NULL, *until_cursor=NULL, *filter=NULL, *new_filter=NULL,
+        *format=NULL, *since_cursor=NULL, *until_cursor=NULL, *filter, *new_filter,
         *remote_journal_directory=NULL;
 
 // constants
@@ -404,8 +404,8 @@ int filter_add(const char *filter_addition, zframe_t **response){
     size_t new_filter_size = sizeof(char) * (length_new_filter+length_addition+1);
     char *helper = malloc( new_filter_size );
     assert(helper);
-    // drop the last 2 characters ']]'
-    strncpy(helper, new_filter, length_new_filter - 2);
+    // length+1 because of trailing \0
+    snprintf(helper, length_new_filter+1, new_filter);
     strcat(helper, filter_prefix);
     strcat(helper, filter_addition);
     strcat(helper, filter_suffix);
@@ -423,7 +423,8 @@ int filter_add_conjunction(zframe_t **response){
     size_t new_filter_size = sizeof(char) * (length+strlen(new_suffix)+1);
     char *helper = malloc( new_filter_size );
     assert(helper);
-    strncpy(helper, new_filter, length -2);
+    // length+1 because of trailing \0
+    snprintf(helper, length+1, new_filter);
     strcat(helper, new_suffix);
     free(new_filter);
     new_filter = helper;
