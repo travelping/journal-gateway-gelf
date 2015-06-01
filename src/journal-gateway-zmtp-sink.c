@@ -43,7 +43,7 @@ static bool active = true;
 uint64_t initial_time;
 
 /* cli arguments */
-int     reverse=0, at_most=-1, follow=0, listening=0;
+int     reverse=0, at_most=-1, follow=0, listening=1;
 char    *since_timestamp=NULL, *until_timestamp=NULL, *client_socket_address=NULL, *control_socket_address=NULL,
         *format=NULL, *since_cursor=NULL, *until_cursor=NULL, *filter=NULL, *new_filter=NULL,
         *remote_journal_directory=NULL;
@@ -705,7 +705,6 @@ int main ( int argc, char *argv[] ){
         { "follow",         no_argument,            NULL,         'g' },
         { "help",           no_argument,            NULL,         'h' },
         { "filter",         required_argument,      NULL,         'i' },
-        { "listen",         no_argument,            NULL,         'j' },
         { 0, 0, 0, 0 }
     };
 
@@ -727,31 +726,25 @@ int main ( int argc, char *argv[] ){
             case 'e':
                 until_cursor = optarg;
                 break;
-            case 'j':
-                listening = 1;
-                break;
             case 'h':
                 fprintf(stdout,
-"journal-gateway-zmtp-sink -- receiving logs from journal-gateway-zmtp-source over the network\n\n\
-Usage: journal-gateway-zmtp-sink   [--help] [--since] [--until]\n\
-                                   [--since_cursor] [--until_cursor] [--at_most]\n\
-                                   [--follow] [--reverse] [--filter]\n\n\
-\t--help \t\twill show this\n\
-\t--since \trequires a timestamp with a format like \"2014-10-01 18:00:00\"\n\
-\t--until \tsee --since\n\
-\t--since_cursor \trequires a log cursor, see e.g. 'journalctl -o export'\n\
-\t--until_cursor \tsee --since_cursor\n\
-\t--at_most \trequires a positive integer N, at most N logs will be sent\n\
-\t--follow \tlike 'journalctl -f', follows the remote journal\n\
-\t--listen \tthe sink waits indefinitely for incomming messages from sources\n\
-\t--reverse \treverses the log stream such that newer logs will be sent first\n\
-\t--filter \trequires input of the form e.g. \"[[\\\"FILTER_1\\\", \\\"FILTER_2\\\"], [\\\"FILTER_3\\\"]]\"\n\
-\t\t\tthis example reprensents the boolean formula \"(FILTER_1 OR FILTER_2) AND (FILTER_3)\"\n\
-\t\t\twhereas the content of FILTER_N is matched against the contents of the logs;\n\
-\t\t\tExample: --filter [[\\\"PRIORITY=3\\\"]] only shows logs with exactly priority 3 \n\n\
-The sink is used to wait for incomming messages from journal-gateway-zmtp-source via exposing a socket.\n\
-Set this socket via setting GATEWAY_LOG_PEER environment variable (must be usable by ZeroMQ).\n\
-Default is tcp://localhost:5555\n\n"
+"journal-gateway-zmtp-sink -- receiving logs from journal-gateway-zmtp-source over the network\n\n"
+"Usage: journal-gateway-zmtp-sink   [--help] [--since] [--until]\n"
+"                                   [--since_cursor] [--until_cursor] [--at_most]\n"
+"                                   [--follow] [--reverse] [--filter]\n\n"
+"   --help      will show this\n"
+"   --since \trequires a timestamp with a format like \"2014-10-01 18:00:00\"\n"
+"   --until \tsee --since\n"
+"   --since_cursor \trequires a log cursor, see e.g. 'journalctl -o export'\n"
+"   --until_cursor \tsee --since_cursor\n"
+"   --at_most \trequires a positive integer N, at most N logs will be sent\n"
+"\n"
+"The sink is used to wait for incomming messages from journal-gateway-zmtp-source via an exposed socket.\n"
+"Set this socket via the GATEWAY_LOG_PEER environment variable (must be usable by ZeroMQ).\n"
+"Default is tcp://localhost:5555\n"
+"\n"
+"For further controls use the journal-gateway-zmtp-control tool\n"
+"\n"
                 );
                 return 0;
             case 0:     /* getopt_long() set a variable, just keep going */
