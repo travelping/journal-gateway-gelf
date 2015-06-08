@@ -82,6 +82,7 @@
 static bool active = true, working_on_query = false;
 void *frontend, *router_control;
 char *source_journal_directory=NULL, *control_socket_address=NULL, *gateway_socket_address = NULL;;
+sd_journal *j = NULL;
 RequestMeta *args = NULL;
 
 // function declarations
@@ -545,7 +546,9 @@ void send_flag(void *socket, zctx_t *ctx, char *flag){
         zctx_destroy (&ctx);
 }
 
-void adjust_journal(sd_journal *j){
+void adjust_journal(){
+    sd_journal_close( j );
+    sd_journal_open_directory(&j, source_journal_directory, 0);
     /* initial position will be seeked, don't forget to 'next'  or 'previous' the journal pointer */
     if ( args->reverse == true && args->until_cursor != NULL)
         sd_journal_seek_cursor( j, args->until_cursor );
@@ -573,7 +576,7 @@ void adjust_journal(sd_journal *j){
     }
 }
 
-int check_args(sd_journal *j, uint64_t realtime_usec, uint64_t monotonic_usec){
+int check_args(uint64_t realtime_usec, uint64_t monotonic_usec){
     UNUSED(monotonic_usec);
     if( ( args->reverse == true && args->since_cursor != NULL && sd_journal_test_cursor ( j, args->since_cursor ) )
         || ( args->reverse == false && args->until_cursor != NULL && sd_journal_test_cursor ( j, args->until_cursor ) )
@@ -584,7 +587,7 @@ int check_args(sd_journal *j, uint64_t realtime_usec, uint64_t monotonic_usec){
         return 0;
 }
 
-char *get_entry_string(sd_journal *j, char** entry_string, size_t* entry_string_size){
+char *get_entry_string(char** entry_string, size_t* entry_string_size){
 
     const void *data;
     size_t length;
@@ -613,7 +616,7 @@ char *get_entry_string(sd_journal *j, char** entry_string, size_t* entry_string_
     sprintf ( monotonic_usec_string, "%" PRId64 , monotonic_usec );
 
     /* check against args if this entry should be sent */
-    if (check_args( j, realtime_usec, monotonic_usec) == 1){
+    if (check_args(realtime_usec, monotonic_usec) == 1){
         free(cursor);
         *entry_string = END;
         *entry_string_size = strlen(END);
@@ -694,7 +697,7 @@ void benchmark( uint64_t initial_time, int log_counter ) {
 }
 #endif
 
-void send_flag_wrapper (sd_journal *j, void *socket, zctx_t *ctx, const char *message, char *flag) {
+void send_flag_wrapper (void *socket, zctx_t *ctx, const char *message, char *flag) {
     sd_journal_print(LOG_DEBUG, message);
     send_flag(socket, ctx, flag);
     sd_journal_close( j );
@@ -724,10 +727,7 @@ static void *handler_routine (void *inp) {
     tim1.tv_nsec = SLEEP;
 
     /* create and adjust the journal pointer according to the information in args */
-    sd_journal *j;
-    sd_journal_open_directory(&j, source_journal_directory, 0);
-
-    adjust_journal(j);
+    adjust_journal();
 
     int loop_counter = args->at_most;
 
@@ -739,7 +739,7 @@ static void *handler_routine (void *inp) {
 
         rc = zmq_poll (items, 1, 0);
         if( rc == -1 ){
-            send_flag_wrapper (j, query_handler, ctx, "error in zmq poll", ERROR);
+            send_flag_wrapper (query_handler, ctx, "error in zmq poll", ERROR);
             return NULL;
         }
 
@@ -747,7 +747,7 @@ static void *handler_routine (void *inp) {
             char *client_msg = zstr_recv (query_handler);
             if( strcmp(client_msg, STOP) == 0 ){
                 /* client wants no more logs */
-                send_flag_wrapper (j, query_handler, ctx, "confirmed stop", STOP);
+                send_flag_wrapper (query_handler, ctx, "confirmed stop", STOP);
                 free (client_msg);
                 working_on_query = false;
                 return NULL;
@@ -771,9 +771,9 @@ static void *handler_routine (void *inp) {
         if( rc == 1 ){
             size_t entry_string_size;
             char *entry_string;
-            get_entry_string( j, &entry_string, &entry_string_size );
+            get_entry_string( &entry_string, &entry_string_size );
             if ( memcmp(entry_string, END, strlen(END)) == 0 ){
-                send_flag_wrapper (j, query_handler, ctx, "query finished successfully", END);
+                send_flag_wrapper (query_handler, ctx, "query finished successfully", END);
                 return NULL;
             }
             else if ( memcmp(entry_string, ERROR, strlen(ERROR)) == 0 ){
@@ -795,12 +795,12 @@ static void *handler_routine (void *inp) {
         }
         /* in case moving the journal pointer around produced an error */
         else if ( rc < 0 ){
-            send_flag_wrapper (j, query_handler, ctx, "journald API produced error", ERROR);
+            send_flag_wrapper (query_handler, ctx, "journald API produced error", ERROR);
             return NULL;
         }
         /* query finished, send END and close the thread */
         else {
-            send_flag_wrapper (j, query_handler, ctx, "query finished successfully", END);
+            send_flag_wrapper (query_handler, ctx, "query finished successfully", END);
             //benchmark(initial_time, log_counter);
             return NULL;
         }
@@ -810,7 +810,7 @@ static void *handler_routine (void *inp) {
     }
 
     /* the at_most option can limit the amount of sent logs */
-    send_flag_wrapper (j, query_handler, ctx, "query finished successfully", END);
+    send_flag_wrapper (query_handler, ctx, "query finished successfully", END);
     //benchmark(initial_time, log_counter);
     return NULL;
 }
