@@ -370,7 +370,7 @@ void show_help(char *ret){
         "       filter_add_conjunction  adds an AND to the list of filters, allowing to AND together the filters\n"
         "       filter_flush            drops all currently set filters\n"
         "       filter_show             shows the currently set filters\n"
-        "       filter_commit           applys the currently set filters (all sources will only send coresponding messages)\n"
+        "       filter_commit           applies the currently set filters (all sources will only send coresponding messages)\n"
         "                               WARNING: this will set the same filter on EVERY source\n"
         "\n"
         "       set_exposed_port [PORT] requires a valid tcp port (default: tcp://127.0.0.1:5555)\n"
@@ -381,7 +381,7 @@ void show_help(char *ret){
         "       show_log_directory      show the directory in which the received logs are stored\n"
         "       show_diskusage          shows the used space of the selected directory (in bytes)\n"
         "\n"
-        "       shutdown                stops the sink\n"
+        "       shutdown                stops this application\n"
         "\n\n";
     sprintf(ret, msg, program_invocation_short_name);
 }
@@ -389,7 +389,6 @@ void show_help(char *ret){
 int filter_add(const char *filter_addition, zframe_t **response){
     char *filter_prefix, *filter_suffix;
     // drop the last 2 characters ']]'
-    fprintf(stderr, "DBG newfilter %s\n", new_filter);
     int length_new_filter = strlen(new_filter)-2;
     // new conjunction
     if(new_filter[length_new_filter-1] == '['){
@@ -701,7 +700,6 @@ int execute_command(opcode command_id, json_t *command_arg, zframe_t **response)
         default:
             return 0;
     }
-
     return 1;
 }
 
