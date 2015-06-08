@@ -72,7 +72,6 @@
 #include <signal.h>
 #include <stdint.h>
 #include <errno.h>
-
 #include "journal-gateway-zmtp.h"
 #include "journal-gateway-zmtp-control.h"
 #include "journal-gateway-zmtp-source.h"
@@ -408,13 +407,12 @@ int show_filter(char *ret){
     length += sprintf(ret+length, "discrete=%d\n", args->discrete);
     length += sprintf(ret+length, "boot=%d\n", args->boot);
     length += sprintf(ret+length, "field=%s\n", args->field);
-
     length += sprintf(ret+length, "filter=\n");
     size_t i,k;
     Clause *clause;
     for(i=0;i<args->n_clauses;i++){
         clause = (args->clauses)[i];
-        length += sprintf(ret+length, "\t");
+        length += sprintf(ret+length, "    ");
         for(k=0;k<clause->n_primitives;k++){
             length += sprintf(ret+length, "%s ",(char*)clause->primitives[k]);
         }
@@ -1078,6 +1076,7 @@ The journal-gateway-zmtp-sink has to expose the given socket.\n\n"
 
     /* initialize filter */
     new_filter = strdup("[[]]");
+
     args = malloc( sizeof(RequestMeta) );
     json_t *json_helper = json_object();
     json_t *json_filter = json_loads("[[]]", JSON_REJECT_DUPLICATES, NULL);
