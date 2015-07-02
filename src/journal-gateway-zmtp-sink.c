@@ -55,7 +55,6 @@ const char du_cmd_format[]  = "du -s %s";
 typedef struct {
     char            *client_key;
     zframe_t        *id_frame;
-    FILE            *sjr;
     time_t          time_last_message;
     UT_hash_handle  hh; /*requirement for uthash*/
 }Connection;
@@ -150,7 +149,6 @@ void con_hash_delete(Connection **hash, Connection *item){
     HASH_DEL(*hash, item);
     free(item->client_key);
     zframe_destroy(&(item->id_frame));
-    pclose(item->sjr);
     free(item);
 }
 
@@ -335,7 +333,7 @@ static void s_catch_signals (){
 }
 
 /* Do sth with the received (log)message */
-int response_handler(zframe_t* cid, zmsg_t *response, FILE *sjr){
+int response_handler(zframe_t* cid, zmsg_t *response){
     zframe_t *frame;
     void *frame_data;
     size_t frame_size;
@@ -992,7 +990,6 @@ int main ( int argc, char *argv[] ){
             if ( lookup == NULL ){
                 lookup = (Connection *) malloc( sizeof(Connection) );
                 assert(lookup);
-                lookup->sjr = create_log_filestream(client_key);
                 lookup->id_frame = zframe_dup(client_ID);
                 lookup->client_key=strdup(client_key);
                 HASH_ADD_STR(connections, client_key, lookup);
@@ -1000,8 +997,7 @@ int main ( int argc, char *argv[] ){
             }
             free(client_key);
             lookup->time_last_message = get_clock_time();
-            rc = response_handler(client_ID, response, lookup->sjr);
-            fflush(lookup->sjr);
+            rc = response_handler(client_ID, response);
             zmsg_destroy (&response);
             /* end of log stream and not listening for more OR did an error occur? */
             if ( rc==1 || rc==-1 ){
