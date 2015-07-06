@@ -165,13 +165,13 @@ FILE* create_log_filestream(char *client_key){
     const char *jfile_name = "remote";
 
     size_t s = strlen(sjr_cmd_format) + strlen(main_dir) + strlen(logorigin_dir) + strlen(jfile_name);
-    char pathtojournalfile[256];
-    assert(s < sizeof(pathtojournalfile));
+    char *pathtojournalfile = (char*) malloc(s+1);
+    assert (pathtojournalfile);
     sprintf (pathtojournalfile, sjr_cmd_format, main_dir, logorigin_dir, jfile_name);
 
-    char *new_directory[256];
     s = strlen(directory_format) + strlen(main_dir) + strlen(logorigin_dir);
-    assert(s < sizeof(new_directory));
+    char *new_directory = (char*) malloc(s+1);
+    assert(new_directory);
     sprintf(new_directory, directory_format, main_dir, logorigin_dir);
     int rc = mkdir(new_directory, 0766);
     if (rc == -1){
@@ -186,6 +186,9 @@ FILE* create_log_filestream(char *client_key){
         }
     }
     ret = popen(pathtojournalfile, "w");
+
+    free(pathtojournalfile);
+    free(new_directory);
     assert(ret);
     return ret;
 }
