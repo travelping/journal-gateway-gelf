@@ -49,7 +49,7 @@ char    *since_timestamp=NULL, *until_timestamp=NULL, *client_socket_address=NUL
         *remote_journal_directory=NULL;
 
 // constants
-const char sjr_cmd_format[] = "/lib/systemd/systemd-journal-remote -o %s/%s.journal -";
+// cmd to get diskusage of all journalfiles
 const char du_cmd_format[]  = "du -s %s";
 
 typedef struct {
@@ -154,11 +154,37 @@ void con_hash_delete(Connection **hash, Connection *item){
 
 FILE* create_log_filestream(char *client_key){
     FILE *ret = NULL;
+
+    // directoryname/machineid/
+    const char directory_format[] = "%s/%s";
+    // directoryname/machineid/machineid.journal
+    const char sjr_cmd_format[] = "/lib/systemd/systemd-journal-remote -o %s/%s/%s.journal -";
+
+    char *main_dir = remote_journal_directory;
+    char *logorigin_dir = client_key;
+    const char *jfile_name = "remote";
+
+    size_t s = strlen(sjr_cmd_format) + strlen(main_dir) + strlen(logorigin_dir) + strlen(jfile_name);
     char pathtojournalfile[256];
-    const char *journalname = client_key;
-    const size_t s = strlen(remote_journal_directory) + strlen(journalname) + sizeof(sjr_cmd_format);
     assert(s < sizeof(pathtojournalfile));
-    sprintf (pathtojournalfile, sjr_cmd_format, remote_journal_directory, journalname);
+    sprintf (pathtojournalfile, sjr_cmd_format, main_dir, logorigin_dir, jfile_name);
+
+    char *new_directory[256];
+    s = strlen(directory_format) + strlen(main_dir) + strlen(logorigin_dir);
+    assert(s < sizeof(new_directory));
+    sprintf(new_directory, directory_format, main_dir, logorigin_dir);
+    int rc = mkdir(new_directory, 0766);
+    if (rc == -1){
+        switch(errno){
+            case EEXIST:
+                // directory already exists, everything's fine
+                rc = 1;
+                break;
+            default:
+                // some other error occured
+                fprintf(stderr, "Error while creating the directory, errno: %d \n", errno);
+        }
+    }
     ret = popen(pathtojournalfile, "w");
     assert(ret);
     return ret;
