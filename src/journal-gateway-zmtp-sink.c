@@ -717,7 +717,7 @@ int set_log_directory(char *new_directory){
     if (ret == -1){
         switch(errno){
             case EEXIST:
-                // directory already exists, everythings fine
+                // directory already exists, everything's fine
                 ret = 1;
                 break;
             default:
