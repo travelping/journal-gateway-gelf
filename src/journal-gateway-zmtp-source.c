@@ -72,21 +72,24 @@
 #include <signal.h>
 #include <stdint.h>
 #include <errno.h>
-
 #include "journal-gateway-zmtp.h"
 #include "journal-gateway-zmtp-control.h"
 #include "journal-gateway-zmtp-source.h"
 
+#define _GNU_SOURCE
 #define KEYDATA(KEY) .key=KEY, .keylen=sizeof(KEY)
 
+extern char *program_invocation_short_name;
 static bool active = true, working_on_query = false;
 void *frontend, *router_control;
-char *source_journal_directory=NULL, *control_socket_address=NULL, *gateway_socket_address = NULL;;
+char *source_journal_directory=NULL, *control_socket_address=NULL, *gateway_socket_address = NULL, *new_filter;
+sd_journal *j = NULL;
 RequestMeta *args = NULL;
 
 // function declarations
 
 void set_matches(json_t *json_args, char *key);
+void adjust_journal();
 
 /* signal handler function, can be used to interrupt the gateway via keystroke */
 void stop_gateway(int dummy) {
@@ -131,19 +134,18 @@ char* strdup_nullok(const char* inp){
 // structures for controlhandling
 
 typedef enum {
-    FT_REVERSE = 1,
-    FT_AT_MOST,
-    FT_SINCE_TIMESTAMP,
-    FT_UNTIL_TIMESTAMP,
-    FT_SINCE_CURSOR,
-    FT_UNTIL_CURSOR,
-    FT_FOLLOW,
-    FT_FILTER,
-    FT_LISTEN,
-    SET_TARGET_PEER,
+    SHOW_HELP = 1,
+    HELP,
+    FILTER_ADD,
+    FILTER_ADD_CONJUNCTION,
+    FILTER_COMMIT,
+    FILTER_FLUSH,
+    FILTER_SHOW,
     SHOW_FILTER,
-    SHOW_HELP,
-    CTRL_APPLY_FILTER,
+    SET_TARGET_PORT,
+    SHOW_TARGET_PORT,
+    SET_LOG_DIRECTORY,
+    SHOW_LOG_DIRECTORY,
     CTRL_SHUTDOWN,
 } opcode;
 
@@ -154,19 +156,18 @@ struct Command{
 };
 
 static struct Command valid_commands[] = {
-    {.id = FT_REVERSE, KEYDATA("reverse")},
-    {.id = FT_AT_MOST, KEYDATA("at_most")},
-    {.id = FT_SINCE_TIMESTAMP, KEYDATA("since_timestamp")},
-    {.id = FT_UNTIL_TIMESTAMP, KEYDATA("until_timestamp")},
-    {.id = FT_SINCE_CURSOR, KEYDATA("since_cursor")},
-    {.id = FT_UNTIL_CURSOR, KEYDATA("until_cursor")},
-    {.id = FT_FOLLOW, KEYDATA("follow")},
-    {.id = FT_FILTER, KEYDATA("filter")},
-    {.id = FT_LISTEN, KEYDATA("listen")},
-    {.id = SET_TARGET_PEER, KEYDATA("set_target_peer")},
+    {.id = FILTER_ADD, KEYDATA("filter_add")},
+    {.id = FILTER_ADD_CONJUNCTION, KEYDATA("filter_add_conjunction")},
+    {.id = FILTER_COMMIT, KEYDATA("filter_commit")},
+    {.id = FILTER_FLUSH, KEYDATA("filter_flush")},
+    {.id = FILTER_SHOW, KEYDATA("filter_show")},
     {.id = SHOW_FILTER, KEYDATA("show_filter")},
-    {.id = SHOW_HELP, KEYDATA("help")},
-    {.id = CTRL_APPLY_FILTER, KEYDATA("apply_filter")},
+    {.id = SET_TARGET_PORT, KEYDATA("set_target_port")},
+    {.id = SHOW_TARGET_PORT, KEYDATA("show_target_port")},
+    {.id = SHOW_HELP, KEYDATA("show_help")},
+    {.id = HELP, KEYDATA("help")},
+    {.id = SET_LOG_DIRECTORY, KEYDATA("set_log_directory")},
+    {.id = SHOW_LOG_DIRECTORY, KEYDATA("show_log_directory")},
     {.id = CTRL_SHUTDOWN, KEYDATA("shutdown")},
 };
 
@@ -187,10 +188,28 @@ int get_command_id_by_key(const char *inp_key, opcode *result){
     return 0;
 }
 
+int ctrl_send_c_to_backend(opcode c){
+    zctx_t *ctx = zctx_new();
+    void *backend = zsocket_new(ctx, ZMQ_DEALER);
+    assert(backend);
+    int rc;
+    rc = zsocket_connect(backend, BACKEND_SOCKET);
+    assert(rc == 0);
+    zmsg_t *msg = zmsg_new();
+    zframe_t *frame = zframe_new(&c, 1);
+    zmsg_push(msg, frame);
+    zmsg_send(&msg, backend);
+    //cleanup
+    sleep(1);
+    zsocket_destroy(ctx, backend);
+    zctx_destroy(&ctx);
+    return 1;
+}
+
 /* control API */
 
 /* changing the target peer */
-int set_target_peer(char *peer){
+int set_target_port(char *peer){
     int rc;
     rc = zsocket_disconnect(frontend, gateway_socket_address);
     if(rc==-1){
@@ -205,61 +224,173 @@ int set_target_peer(char *peer){
     return 1;
 }
 
-int ctrl_send_c_to_backend(opcode c){
-    zctx_t *ctx = zctx_new();
-    void *backend = zsocket_new(ctx, ZMQ_DEALER);
-    assert(backend);
-    int rc;
-    rc = zsocket_connect(backend, BACKEND_SOCKET);
-    assert(rc == 0);
-    zmsg_t *msg = zmsg_new();
-    zframe_t *frame = zframe_new(&c, 1);
-    zmsg_push(msg, frame);
-    fprintf(stderr, "DBG: sending code %d to backend\n", c);
-    zmsg_send(&msg, backend);
-    //cleanup
-    sleep(1);
-    zsocket_destroy(ctx, backend);
-    zctx_destroy(&ctx);
-    return 1;
-}
-
-int apply_filter(sd_journal *j){
-    fprintf(stderr, "DBG: in apply_filter()\n");
-    sd_journal_flush_matches( j );
-    size_t i,k;
-    Clause *clause;
-    for(i=0;i<args->n_clauses;i++){
-        clause = (args->clauses)[i];
-        for(k=0;k<clause->n_primitives;k++){
-            sd_journal_add_match( j, clause->primitives[k], 0);
-        }
-        sd_journal_add_conjunction( j );
-    }
+/* showing the exposed port */
+int show_target_port(zframe_t **response){
+    *response = zframe_new(gateway_socket_address,strlen(gateway_socket_address));
     return 1;
 }
 
 int show_help(char *ret){
-    sprintf(ret,
-"Usage: Type in one of the following commands and \n\
-optional arguments (space separated), confirm your input by pressing enter\n\n\
-\thelp\t\t\twill show this\n\
-\tto change the default filter choose the following options:\n\
-\t\tsince_cursor\t\trequires a log cursor, see e.g. 'journalctl -o export'\n\
-\t\tuntil_cursor\t\tsee --since_cursor\n\
-\t\tat_most\t\t\trequires a positive integer N, at most N logs will be sent\n\
-\t\tfilter\t\t\trequires input of the form e.g. \"[[\"FILTER_1\", \"FILTER_2\"], [\"FILTER_3\"]]\"\n\
-\t\t\t\t\tthis example reprensents the boolean formula \"(FILTER_1 OR FILTER_2) AND (FILTER_3)\"\n\
-\t\t\t\t\twhereas the content of FILTER_N is matched against the contents of the logs;\n\
-\t\t\t\t\tExample: --filter [[\"PRIORITY=3\"]] only shows logs with exactly priority 3 \n\
-\tshow_filter\t\tshows the current filters (see above)\n\
-\tThe set filters need to be applied to change the output of the source via:\n\
-\tapply_filter\t\ttriggers application of the set filter\n\
-\n\
-\tset_target_peer\trequires a valid tcp peer (e.g. tcp://127.0.0.1:5555)\n\
-\tshutdown\t\tstops the gateway\
-\n\n"
-    );
+    const char *msg =
+        "You are talking with %s \n"
+        "Valid commands are:\n"
+        "\n"
+        "       help                    will show this\n"
+        "\n"
+        "   Changing the logfilters:\n"
+        "   You need to set the desired filters and commit them afterwards\n"
+        "       filter_add [FIELD]      requires input of the form VARIABLE=value\n"
+        "                               successively added filters are ORed together\n"
+        "       filter_add_conjunction  adds an AND to the list of filters, allowing to AND together the filters\n"
+        "       filter_flush            drops all currently set filters\n"
+        "       filter_show             shows the currently set filters\n"
+        "       filter_commit           applies the currently set filters\n"
+        "\n"
+        "       set_target_port [PORT] requires a valid tcp port (default: tcp://127.0.0.1:5555)\n"
+        "       show_target_port       shows the port on which the sink listens for incomming logs\n"
+        "\n"
+        "       set_log_directory [DIR] sets the directory from which the logs will be read\n"
+        "       show_log_directory      show the directory from which the logs are read\n"
+        "\n"
+        "       shutdown                stops this application\n"
+        "\n\n";
+    sprintf(ret, msg);
+    return 1;
+}
+
+int filter_add(const char *filter_addition, zframe_t **response){
+    char *filter_prefix, *filter_suffix;
+    // drop the last 2 characters ']]'
+    int length_new_filter = strlen(new_filter)-2;
+    // new conjunction
+    if(new_filter[length_new_filter-1] == '['){
+        filter_prefix = "\"";
+        filter_suffix = "\"]]";
+    }
+    // in "old" conjunction
+    else if(new_filter[length_new_filter-1] == '"'){
+        filter_prefix = ",\"";
+        filter_suffix = "\"]]";
+    }
+    else{
+        fprintf(stderr, "%s\n", "erroneus filter inserted, abbort");
+        return 0;
+    }
+    int length_addition = strlen(filter_addition)+strlen(filter_prefix)+strlen(filter_suffix);
+    size_t new_filter_size = sizeof(char) * (length_new_filter+length_addition+1);
+    char *helper = malloc( new_filter_size );
+    assert(helper);
+    // length+1 because of trailing \0
+    snprintf(helper, length_new_filter+1, new_filter);
+    strcat(helper, filter_prefix);
+    strcat(helper, filter_addition);
+    strcat(helper, filter_suffix);
+    free(new_filter);
+    new_filter = helper;
+    char *stringh = "filter added\n";
+    *response = zframe_new(stringh,strlen(stringh));
+    return 1;
+}
+
+int filter_add_conjunction(zframe_t **response){
+    char *new_suffix = "],[]]";
+    // drop the last 2 characters ']]'
+    int length = strlen(new_filter)-2;
+    size_t new_filter_size = sizeof(char) * (length+strlen(new_suffix)+1);
+    char *helper = malloc( new_filter_size );
+    assert(helper);
+    // length+1 because of trailing \0
+    snprintf(helper, length+1, new_filter);
+    strcat(helper, new_suffix);
+    free(new_filter);
+    new_filter = helper;
+    char *stringh = "conjunction added\n";
+    *response = zframe_new(stringh,strlen(stringh));
+    return 1;
+}
+
+int filter_flush(zframe_t **response){
+    free(new_filter);
+    new_filter=strdup("[[]]");
+    char *stringh = "filter flushed\n";
+    *response = zframe_new(stringh,strlen(stringh));
+    return 1;
+}
+
+// returns the set filters which are packed in clauses in a human readable form
+int string_from_clauses(char *ret, int *length){
+    // if ret contains NULL pointer return the length of the result in length
+    if (ret == NULL){
+        *length = 0;
+        size_t i,k;
+        Clause *clause;
+        for(i=0;i<args->n_clauses;i++){
+            clause = (args->clauses)[i];
+            if( i!=0 ){
+                *length += strlen("AND ");
+            }
+            for(k=0;k<clause->n_primitives;k++){
+                if( k!=0 ){
+                    *length += strlen(" OR ");
+                }
+                *length += strlen((char*)clause->primitives[k]);
+            }
+            *length += strlen("\n");
+        }
+    }
+    // otherwise return human readable form of the filter in ret and length in length
+    else{
+        *length = 0;
+        size_t i,k;
+        Clause *clause;
+        for(i=0;i<args->n_clauses;i++){
+            clause = (args->clauses)[i];
+            if ( i!=0 ){
+                *length += sprintf(ret+*length, "AND ");
+            }
+            for(k=0;k<clause->n_primitives;k++){
+                if ( k!=0 ){
+                    *length += sprintf(ret+*length, " OR ");
+                }
+                *length += sprintf(ret+*length, "%s",(char*)clause->primitives[k]);
+            }
+            *length += sprintf(ret+*length, "\n");
+        }
+    }
+    return 1;
+}
+
+/*
+    returns the set filters in a response frame
+*/
+int filter_show(zframe_t **response){
+    char *format_1 = "currently applied filter = %s\n";
+    int length_filter1;
+    string_from_clauses(NULL, &length_filter1);
+    char *filter = malloc(sizeof(char) * (length_filter1+1));
+    string_from_clauses(filter, &length_filter1);
+    char *format_2 = "new filter (commit to apply) = %s\n";
+    int length_filter2 = strlen(format_1)-1 + strlen(filter) + strlen(format_2)-1 + strlen(new_filter);
+    char *stringh = malloc(sizeof(char) * (length_filter2+1));
+
+    length_filter2 =sprintf(stringh,        format_1, filter);
+    sprintf(stringh+length_filter2, format_2, new_filter);
+    *response = zframe_new(stringh,strlen(stringh));
+    free(filter);
+    free(stringh);
+    return 1;
+}
+
+int filter_commit(zframe_t **response){
+    json_t *json_helper = json_object();
+    json_t *json_filter = json_loads(new_filter, JSON_REJECT_DUPLICATES, NULL);
+    json_object_set(json_helper, "helper", json_filter);
+    set_matches(json_helper, "helper");
+    *response = zframe_new(CTRL_ACCEPTED,strlen(CTRL_ACCEPTED));
+    json_decref(json_helper);
+    char *stringh = "filter commited\n";
+    ctrl_send_c_to_backend(FILTER_COMMIT);
+    *response = zframe_new(stringh,strlen(stringh));
     return 1;
 }
 
@@ -276,19 +407,49 @@ int show_filter(char *ret){
     length += sprintf(ret+length, "discrete=%d\n", args->discrete);
     length += sprintf(ret+length, "boot=%d\n", args->boot);
     length += sprintf(ret+length, "field=%s\n", args->field);
-
     length += sprintf(ret+length, "filter=\n");
     size_t i,k;
     Clause *clause;
     for(i=0;i<args->n_clauses;i++){
         clause = (args->clauses)[i];
-        length += sprintf(ret+length, "\t");
+        length += sprintf(ret+length, "    ");
         for(k=0;k<clause->n_primitives;k++){
             length += sprintf(ret+length, "%s ",(char*)clause->primitives[k]);
         }
         length += sprintf(ret+length, "\n");
     }
 
+    return 1;
+}
+
+/* changing the directory, from which the journal entries are read */
+int set_log_directory(const char *new_directory, zframe_t **response){
+
+    // create specified directory with rwxrw-rw-
+    int rc = mkdir(new_directory, 0766);
+    if (rc == -1){
+        switch(errno){
+            case EEXIST:
+                // directory already exists, everythings fine
+                break;
+            default:
+                // some other error occured
+                fprintf(stderr, "Error while creating the directory, errno: %d \n", errno);
+                return -1;
+        }
+    }
+    free(source_journal_directory);
+    source_journal_directory = strdup(new_directory);
+    // adjust the journal "stream"
+    adjust_journal();
+
+    char *stringh = "directory changed\n";
+    *response = zframe_new(stringh,strlen(stringh));
+    return 1;
+}
+
+int show_log_directory(zframe_t **response){
+    *response = zframe_new(source_journal_directory,strlen(source_journal_directory));
     return 1;
 }
 
@@ -325,65 +486,46 @@ int execute_command(opcode command_id, json_t *command_arg, zframe_t **response)
     char stringh[2048];
 
     switch (command_id){
-        case FT_REVERSE:
-            args->reverse = get_int_from_jstring(command_arg) != 0;
-            *response = zframe_new(CTRL_ACCEPTED,strlen(CTRL_ACCEPTED));
+        case FILTER_ADD:
+            filter_add(get_string_from_jstring(command_arg), response);
             break;
-        case FT_AT_MOST:
-            args->at_most = get_int_from_jstring(command_arg);
-            *response = zframe_new(CTRL_ACCEPTED,strlen(CTRL_ACCEPTED));
+        case FILTER_ADD_CONJUNCTION:
+            filter_add_conjunction(response);
             break;
-        case FT_SINCE_TIMESTAMP:
-            args->since_timestamp = get_timestamp_from_jstring(command_arg);
-            *response = zframe_new(CTRL_ACCEPTED,strlen(CTRL_ACCEPTED));
+        case FILTER_FLUSH:
+            filter_flush(response);
             break;
-        case FT_UNTIL_TIMESTAMP:
-            args->until_timestamp = get_timestamp_from_jstring(command_arg);
-            *response = zframe_new(CTRL_ACCEPTED,strlen(CTRL_ACCEPTED));
+        case FILTER_COMMIT:
+            filter_commit(response);
             break;
-        case FT_SINCE_CURSOR:
-            free(args->since_cursor);
-            args->since_cursor = get_string_from_jstring(command_arg);
-            *response = zframe_new(CTRL_ACCEPTED,strlen(CTRL_ACCEPTED));
-            break;
-        case FT_UNTIL_CURSOR:
-            free(args->until_cursor);
-            args->until_cursor = get_string_from_jstring(command_arg);
-            *response = zframe_new(CTRL_ACCEPTED,strlen(CTRL_ACCEPTED));
-            break;
-        case FT_FOLLOW:
-            args->follow = get_int_from_jstring(command_arg) != 0;
-            *response = zframe_new(CTRL_ACCEPTED,strlen(CTRL_ACCEPTED));
-            break;
-        case FT_FILTER: ;
-            // todo: better string handling
-            json_t *json_helper = json_object();
-            json_t *json_filter = json_loads(get_string_from_jstring(command_arg), JSON_REJECT_DUPLICATES, NULL);
-            json_object_set(json_helper, "helper", json_filter);
-            set_matches(json_helper, "helper");
-            *response = zframe_new(CTRL_ACCEPTED,strlen(CTRL_ACCEPTED));
-            break;
-        case FT_LISTEN:
-            args->listening = get_int_from_jstring(command_arg) != 0;
-            *response = zframe_new(CTRL_ACCEPTED,strlen(CTRL_ACCEPTED));
-            break;
-        case SET_TARGET_PEER: ;
-            char *peer = get_string_from_jstring(command_arg);
-            set_target_peer(peer);
-            *response = zframe_new(CTRL_ACCEPTED,strlen(CTRL_ACCEPTED));
-            free(peer);
+        case FILTER_SHOW:
+            filter_show(response);
             break;
         case SHOW_FILTER:
-            show_filter(&stringh[0]);
+            filter_show(response);
+            break;
+        case SET_TARGET_PORT: ;
+            char *port = get_string_from_jstring(command_arg);
+            set_target_port(port);
+            *response = zframe_new(CTRL_ACCEPTED,strlen(CTRL_ACCEPTED));
+            free(port);
+            break;
+        case SHOW_TARGET_PORT:
+            show_target_port(response);
+            break;
+        case SET_LOG_DIRECTORY:
+            set_log_directory(get_string_from_jstring(command_arg), response);
+            break;
+        case SHOW_LOG_DIRECTORY:
+            show_log_directory(response);
+            break;
+        case HELP:
+            show_help(&stringh[0]);
             *response = zframe_new(stringh,strlen(stringh));
             break;
         case SHOW_HELP:
             show_help(&stringh[0]);
             *response = zframe_new(stringh,strlen(stringh));
-            break;
-        case CTRL_APPLY_FILTER:
-            ctrl_send_c_to_backend(CTRL_APPLY_FILTER);
-            *response = zframe_new(CTRL_ACCEPTED,strlen(CTRL_ACCEPTED));
             break;
         case CTRL_SHUTDOWN:
             stop_gateway(0);
@@ -481,6 +623,21 @@ uint64_t get_arg_date(json_t *json_args, char *key){
     json_decref(json_date);
 }
 
+// apply the filter set in args to j
+int apply_filter(){
+    sd_journal_flush_matches( j );
+    size_t i,k;
+    Clause *clause;
+    for(i=0;i<args->n_clauses;i++){
+        clause = (args->clauses)[i];
+        for(k=0;k<clause->n_primitives;k++){
+            sd_journal_add_match( j, clause->primitives[k], 0);
+        }
+        sd_journal_add_conjunction( j );
+    }
+    return 1;
+}
+
 /* fill a RequestMeta structure with the information from the query_string */
 RequestMeta *parse_json(zmsg_t* query_msg){
     zframe_t *query_frame = zmsg_pop (query_msg);
@@ -545,7 +702,9 @@ void send_flag(void *socket, zctx_t *ctx, char *flag){
         zctx_destroy (&ctx);
 }
 
-void adjust_journal(sd_journal *j){
+void adjust_journal(){
+    sd_journal_close( j );
+    sd_journal_open_directory(&j, source_journal_directory, 0);
     /* initial position will be seeked, don't forget to 'next'  or 'previous' the journal pointer */
     if ( args->reverse == true && args->until_cursor != NULL)
         sd_journal_seek_cursor( j, args->until_cursor );
@@ -573,7 +732,7 @@ void adjust_journal(sd_journal *j){
     }
 }
 
-int check_args(sd_journal *j, uint64_t realtime_usec, uint64_t monotonic_usec){
+int check_args(uint64_t realtime_usec, uint64_t monotonic_usec){
     UNUSED(monotonic_usec);
     if( ( args->reverse == true && args->since_cursor != NULL && sd_journal_test_cursor ( j, args->since_cursor ) )
         || ( args->reverse == false && args->until_cursor != NULL && sd_journal_test_cursor ( j, args->until_cursor ) )
@@ -584,7 +743,7 @@ int check_args(sd_journal *j, uint64_t realtime_usec, uint64_t monotonic_usec){
         return 0;
 }
 
-char *get_entry_string(sd_journal *j, char** entry_string, size_t* entry_string_size){
+char *get_entry_string(char** entry_string, size_t* entry_string_size){
 
     const void *data;
     size_t length;
@@ -613,7 +772,7 @@ char *get_entry_string(sd_journal *j, char** entry_string, size_t* entry_string_
     sprintf ( monotonic_usec_string, "%" PRId64 , monotonic_usec );
 
     /* check against args if this entry should be sent */
-    if (check_args( j, realtime_usec, monotonic_usec) == 1){
+    if (check_args(realtime_usec, monotonic_usec) == 1){
         free(cursor);
         *entry_string = END;
         *entry_string_size = strlen(END);
@@ -694,11 +853,10 @@ void benchmark( uint64_t initial_time, int log_counter ) {
 }
 #endif
 
-void send_flag_wrapper (sd_journal *j, void *socket, zctx_t *ctx, const char *message, char *flag) {
+void send_flag_wrapper (void *socket, zctx_t *ctx, const char *message, char *flag) {
     sd_journal_print(LOG_DEBUG, message);
     send_flag(socket, ctx, flag);
     sd_journal_close( j );
-    RequestMeta_destruct(args);
     return;
 }
 
@@ -725,10 +883,7 @@ static void *handler_routine (void *inp) {
     tim1.tv_nsec = SLEEP;
 
     /* create and adjust the journal pointer according to the information in args */
-    sd_journal *j;
-    sd_journal_open_directory(&j, source_journal_directory, 0);
-
-    adjust_journal(j);
+    adjust_journal();
 
     int loop_counter = args->at_most;
 
@@ -740,7 +895,7 @@ static void *handler_routine (void *inp) {
 
         rc = zmq_poll (items, 1, 0);
         if( rc == -1 ){
-            send_flag_wrapper (j, query_handler, ctx, "error in zmq poll", ERROR);
+            send_flag_wrapper (query_handler, ctx, "error in zmq poll", ERROR);
             return NULL;
         }
 
@@ -748,13 +903,13 @@ static void *handler_routine (void *inp) {
             char *client_msg = zstr_recv (query_handler);
             if( strcmp(client_msg, STOP) == 0 ){
                 /* client wants no more logs */
-                send_flag_wrapper (j, query_handler, ctx, "confirmed stop", STOP);
+                send_flag_wrapper (query_handler, ctx, "confirmed stop", STOP);
                 free (client_msg);
                 working_on_query = false;
                 return NULL;
             }
-            else if( client_msg[0] == CTRL_APPLY_FILTER ){
-                apply_filter(j);
+            else if( client_msg[0] == FILTER_COMMIT ){
+                apply_filter();
             }
             else{
                 fprintf(stderr, "%s\n", "received unknown message");
@@ -772,9 +927,9 @@ static void *handler_routine (void *inp) {
         if( rc == 1 ){
             size_t entry_string_size;
             char *entry_string;
-            get_entry_string( j, &entry_string, &entry_string_size );
+            get_entry_string( &entry_string, &entry_string_size );
             if ( memcmp(entry_string, END, strlen(END)) == 0 ){
-                send_flag_wrapper (j, query_handler, ctx, "query finished successfully", END);
+                send_flag_wrapper (query_handler, ctx, "query finished successfully", END);
                 return NULL;
             }
             else if ( memcmp(entry_string, ERROR, strlen(ERROR)) == 0 ){
@@ -796,12 +951,12 @@ static void *handler_routine (void *inp) {
         }
         /* in case moving the journal pointer around produced an error */
         else if ( rc < 0 ){
-            send_flag_wrapper (j, query_handler, ctx, "journald API produced error", ERROR);
+            send_flag_wrapper (query_handler, ctx, "journald API produced error", ERROR);
             return NULL;
         }
         /* query finished, send END and close the thread */
         else {
-            send_flag_wrapper (j, query_handler, ctx, "query finished successfully", END);
+            send_flag_wrapper (query_handler, ctx, "query finished successfully", END);
             //benchmark(initial_time, log_counter);
             return NULL;
         }
@@ -811,7 +966,7 @@ static void *handler_routine (void *inp) {
     }
 
     /* the at_most option can limit the amount of sent logs */
-    send_flag_wrapper (j, query_handler, ctx, "query finished successfully", END);
+    send_flag_wrapper (query_handler, ctx, "query finished successfully", END);
     //benchmark(initial_time, log_counter);
     return NULL;
 }
@@ -919,7 +1074,15 @@ The journal-gateway-zmtp-sink has to expose the given socket.\n\n"
         control_socket_address = DEFAULT_CTRL_EXPOSED_SOCKET;
     }
 
+    /* initialize filter */
+    new_filter = strdup("[[]]");
+
     args = malloc( sizeof(RequestMeta) );
+    json_t *json_helper = json_object();
+    json_t *json_filter = json_loads("[[]]", JSON_REJECT_DUPLICATES, NULL);
+    json_object_set(json_helper, "helper", json_filter);
+    set_matches(json_helper, "helper");
+    json_decref(json_helper);
 
     sd_journal_print(LOG_INFO, "gateway started...");
 
