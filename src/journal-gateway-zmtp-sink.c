@@ -49,19 +49,39 @@ char    *since_timestamp=NULL, *until_timestamp=NULL, *client_socket_address=NUL
         *remote_journal_directory=NULL;
 
 // constants
-const char sjr_cmd_format[] = "/lib/systemd/systemd-journal-remote -o %s/%s.journal -";
+// cmd to get diskusage of all journalfiles
 const char du_cmd_format[]  = "du -s %s";
 
 typedef struct {
     char            *client_key;
     zframe_t        *id_frame;
-    FILE            *sjr;
     time_t          time_last_message;
     UT_hash_handle  hh; /*requirement for uthash*/
 }Connection;
 
+typedef struct {
+    char            *src_machine_id;
+    FILE            *sjr;
+    UT_hash_handle  hh; /*requirement for uthash*/
+}Logging_sources;
+
 // hash to note every incomming connection
 Connection *connections = NULL;
+
+// hash to note every outgoing log (differentiated by machine-id of the logging machine)
+Logging_sources *logging_sources = NULL;
+
+typedef struct {
+    char *cursor_start;
+    char *cursor_end;
+    char *realtime_start;
+    char *realtime_end;
+    char *monotonic_start;
+    char *monotonic_end;
+
+    char *machine_id_value;
+    char *machine_id_end;
+}Journalentry_fieldpins;
 
 // structures for controlhandling
 
@@ -129,18 +149,46 @@ void con_hash_delete(Connection **hash, Connection *item){
     HASH_DEL(*hash, item);
     free(item->client_key);
     zframe_destroy(&(item->id_frame));
-    pclose(item->sjr);
     free(item);
 }
 
 FILE* create_log_filestream(char *client_key){
     FILE *ret = NULL;
-    char pathtojournalfile[256];
-    const char *journalname = client_key;
-    assert(strlen(remote_journal_directory) + strlen(journalname) +
-        sizeof(sjr_cmd_format) < sizeof(pathtojournalfile));
-    sprintf (pathtojournalfile, sjr_cmd_format, remote_journal_directory, journalname);
+
+    // directoryname/machineid/
+    const char directory_format[] = "%s/%s";
+    // directoryname/machineid/machineid.journal
+    const char sjr_cmd_format[] = "/lib/systemd/systemd-journal-remote -o %s/%s/%s.journal -";
+
+    char *main_dir = remote_journal_directory;
+    char *logorigin_dir = client_key;
+    const char *jfile_name = "remote";
+
+    size_t s = strlen(sjr_cmd_format) + strlen(main_dir) + strlen(logorigin_dir) + strlen(jfile_name);
+    char *pathtojournalfile = (char*) malloc(s+1);
+    assert (pathtojournalfile);
+    sprintf (pathtojournalfile, sjr_cmd_format, main_dir, logorigin_dir, jfile_name);
+
+    s = strlen(directory_format) + strlen(main_dir) + strlen(logorigin_dir);
+    char *new_directory = (char*) malloc(s+1);
+    assert(new_directory);
+    sprintf(new_directory, directory_format, main_dir, logorigin_dir);
+    int rc = mkdir(new_directory, 0766);
+    if (rc == -1){
+        switch(errno){
+            case EEXIST:
+                // directory already exists, everything's fine
+                rc = 1;
+                break;
+            default:
+                // some other error occured
+                fprintf(stderr, "Error while creating the directory, errno: %d \n", errno);
+        }
+    }
     ret = popen(pathtojournalfile, "w");
+
+    free(pathtojournalfile);
+    free(new_directory);
     assert(ret);
     return ret;
 }
@@ -154,6 +202,87 @@ char* strdup_nullok(const char* inp){
         ret = strdup(inp);
     }
     return ret;
+}
+
+int get_timestamps(clockid_t clk_id, char *buf, size_t buf_len, size_t *ts_length){
+    const uint64_t IN_MILLISECONDS  = 1000L;
+    const uint64_t IN_SECONDS       = 1000L * IN_MILLISECONDS;
+    struct timespec tp;
+    int rc = clock_gettime(clk_id, &tp);
+    if(rc == 0){
+        uint64_t l_time = tp.tv_sec * IN_SECONDS + (tp.tv_nsec / 1000L);
+        *ts_length = snprintf(buf, buf_len, "%llu", l_time );
+    }
+    return rc;
+}
+
+//helper for handling fields in journal
+//1: unexpected parsing error
+//-1: in field _machine_id (done with pinpointing)
+int pinpoint_metafields(const char* start, char** equalsign, char** end){
+    int ret = 0;
+    const char *machine_id_key = "_MACHINE_ID";
+    char *akt_pos = (char*)start;       // casting to avoid compiler complaints
+
+    if ( *equalsign == NULL ){
+        if ( strncmp(akt_pos, machine_id_key, sizeof(machine_id_key)) == 0 ){
+            akt_pos += sizeof(machine_id_key);
+            ret = -1;
+        }
+    }
+    while( akt_pos[0] != '=' && akt_pos[0] != '\n' ){
+        akt_pos++;
+    }
+    if ( akt_pos[0] == '=' ){
+        *equalsign=akt_pos;
+        while( akt_pos[0] != '\n' ){
+            akt_pos++;
+        }
+    }
+    else if ( akt_pos[0] == '\n'){
+        akt_pos++;
+        uint64_t value_offset = le64toh((uint64_t) *akt_pos);
+        akt_pos += sizeof(uint64_t);
+        *equalsign=akt_pos;
+        akt_pos += value_offset;
+    }
+    *end=akt_pos;
+    return ret;
+}
+
+int pinpoint_all_metafields(const char *j_entry, Journalentry_fieldpins *pins){
+    const char *cursor = "__CURSOR";
+    const char *realtime = "__REALTIME_TIMESTAMP";
+    const char *monotonic = "__MONOTONIC_TIMESTAMP";
+    //    start    equalsign   end
+    char *s=NULL, *eq = NULL, *e = NULL;
+
+    s = (char*) j_entry;
+
+    eq = s + sizeof(cursor);
+    pinpoint_metafields(s,&eq,&e);
+    pins->cursor_start = s;
+    pins->cursor_end   = e;
+
+    s = e + 1;
+    eq = s + sizeof(realtime);
+    pinpoint_metafields(s,&eq,&e);
+    pins->realtime_start = s;
+    pins->realtime_end   = e;
+
+    s = e + 1;
+    eq = s + sizeof(monotonic);
+    pinpoint_metafields(s,&eq,&e);
+    pins->monotonic_start = s;
+    pins->monotonic_end   = e;
+
+    for(;pinpoint_metafields(s,&eq,&e)==0;s = e+1){
+        eq = NULL;
+    }
+    pins->machine_id_value = eq + 1;
+    pins->machine_id_end   = e;
+
+    return 0;
 }
 
 /*
@@ -233,7 +362,7 @@ static void s_catch_signals (){
 }
 
 /* Do sth with the received (log)message */
-int response_handler(zframe_t* cid, zmsg_t *response, FILE *sjr){
+int response_handler(zframe_t* cid, zmsg_t *response){
     zframe_t *frame;
     void *frame_data;
     size_t frame_size;
@@ -283,9 +412,52 @@ int response_handler(zframe_t* cid, zmsg_t *response, FILE *sjr){
         }
         else{
 			assert(((char*)frame_data)[0] == '_');
-            int fd = fileno(sjr);
+
+            Logging_sources *logging_source = NULL;
+            Journalentry_fieldpins pins;
+            pinpoint_all_metafields(frame_data, &pins);
+            char *log_machine_id = strndup(pins.machine_id_value, (pins.machine_id_end - pins.machine_id_value));
+            HASH_FIND_STR(logging_sources, log_machine_id, logging_source);
+            if ( logging_source == NULL){   // new machine id
+                logging_source = (Logging_sources *) malloc( sizeof(Logging_sources));
+                assert(logging_source);
+                logging_source->sjr = create_log_filestream(log_machine_id);
+                logging_source->src_machine_id = log_machine_id;
+                HASH_ADD_STR(logging_sources, src_machine_id, logging_source);
+            }
+            int fd = fileno(logging_source->sjr);
 			fflush(stderr);
-            write(fd, frame_data, frame_size);
+
+            const char realtime_prefix[]  = "__REALTIME_TIMESTAMP=";
+            const char monotonic_prefix[] = "__MONOTONIC_TIMESTAMP=";
+            const char orig_prefix[]      = "X";
+            char timestamp_buffer[20];      // 20 = most chars an int64_t consumes in readable form
+            size_t timestamp_buffer_end;
+
+            //original cursor
+            write(fd, pins.cursor_start, (pins.cursor_end - pins.cursor_start + 1));
+
+            //host realtime timestamp
+            get_timestamps(CLOCK_REALTIME, timestamp_buffer, sizeof(timestamp_buffer), &timestamp_buffer_end);
+            write(fd, realtime_prefix, sizeof(realtime_prefix) -1);
+            write(fd, timestamp_buffer, timestamp_buffer_end);
+            write(fd, "\n", 1);
+
+            //host monotonic timestamp
+            get_timestamps(CLOCK_MONOTONIC, timestamp_buffer, sizeof(timestamp_buffer), &timestamp_buffer_end);
+            write(fd, monotonic_prefix, sizeof(monotonic_prefix) -1);
+            write(fd, timestamp_buffer, timestamp_buffer_end);
+            write(fd, "\n", 1);
+
+            // original body
+            write(fd, pins.monotonic_end+1, frame_size-(pins.monotonic_end - pins.cursor_start + 1));
+
+            // original timestamps with prefixes
+            write(fd, orig_prefix, sizeof(orig_prefix));
+            write(fd, pins.realtime_start, (pins.realtime_end - pins.realtime_start + 1));
+            write(fd, orig_prefix, sizeof(orig_prefix));
+            write(fd, pins.monotonic_start, (pins.monotonic_end - pins.monotonic_start + 1));
+
             write(fd, "\n", 1);
         }
         zframe_destroy (&frame);
@@ -548,7 +720,7 @@ int set_log_directory(char *new_directory){
     if (ret == -1){
         switch(errno){
             case EEXIST:
-                // directory already exists, everythings fine
+                // directory already exists, everything's fine
                 ret = 1;
                 break;
             default:
@@ -560,10 +732,10 @@ int set_log_directory(char *new_directory){
     free(remote_journal_directory);
     remote_journal_directory = new_directory;
     // adjust filestreams
-    Connection *i, *tmp;
-    HASH_ITER(hh, connections, i, tmp){
+    Logging_sources *i, *tmp;
+    HASH_ITER(hh, logging_sources, i, tmp){
         pclose(i->sjr);
-        i->sjr = create_log_filestream(i->client_key);
+        i->sjr = create_log_filestream(i->src_machine_id);
     }
 
     return ret;
@@ -826,6 +998,7 @@ int main ( int argc, char *argv[] ){
     /* timer for timeouts */
     time_t last_check=0;
     Connection *lookup;
+
     zframe_t *client_ID;
     char *client_key;
 
@@ -846,7 +1019,6 @@ int main ( int argc, char *argv[] ){
             if ( lookup == NULL ){
                 lookup = (Connection *) malloc( sizeof(Connection) );
                 assert(lookup);
-                lookup->sjr = create_log_filestream(client_key);
                 lookup->id_frame = zframe_dup(client_ID);
                 lookup->client_key=strdup(client_key);
                 HASH_ADD_STR(connections, client_key, lookup);
@@ -854,8 +1026,7 @@ int main ( int argc, char *argv[] ){
             }
             free(client_key);
             lookup->time_last_message = get_clock_time();
-            rc = response_handler(client_ID, response, lookup->sjr);
-            fflush(lookup->sjr);
+            rc = response_handler(client_ID, response);
             zmsg_destroy (&response);
             /* end of log stream and not listening for more OR did an error occur? */
             if ( rc==1 || rc==-1 ){
