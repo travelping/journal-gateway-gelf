@@ -1032,11 +1032,12 @@ int main (int argc, char *argv[]){
 
     struct option longopts[] = {
         { "help",       no_argument,            NULL,         'h' },
+        { "version",    no_argument,            NULL,         'v' },
         { 0, 0, 0, 0 }
     };
 
     int c;
-    while((c = getopt_long(argc, argv, "s:", longopts, NULL)) != -1) {
+    while((c = getopt_long(argc, argv, "hv", longopts, NULL)) != -1) {
         switch (c) {
             case 'h':
                 fprintf(stdout,
@@ -1046,6 +1047,9 @@ Usage: journal-gateway-zmtp-source [--help]\n\n\
 To set a socket to connect to a gateway sink set the JOURNAL_REMOTE_TARGET (must be usable by ZeroMQ)\n\
 The journal-gateway-zmtp-sink has to expose the given socket.\n\n"
                 );
+                return 0;
+            case 'v':
+                fprintf(stdout, "Journal-Gateway-ZMTP Version %d.%d.%d\n", VMAYOR, VMINOR, VPATCH);
                 return 0;
             case 0:     /* getopt_long() set a variable, just keep going */
                 break;

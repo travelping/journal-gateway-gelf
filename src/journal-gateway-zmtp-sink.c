@@ -1039,14 +1039,13 @@ int main ( int argc, char *argv[] ){
         { "until",          required_argument,      NULL,         'c' },
         { "since_cursor",   required_argument,      NULL,         'd' },
         { "until_cursor",   required_argument,      NULL,         'e' },
-        { "follow",         no_argument,            NULL,         'g' },
         { "help",           no_argument,            NULL,         'h' },
-        { "filter",         required_argument,      NULL,         'i' },
+        { "version",        no_argument,            NULL,         'v' },
         { 0, 0, 0, 0 }
     };
 
     int c;
-    while((c = getopt_long(argc, argv, "a:b:c:d:e:f:ghs:", longopts, NULL)) != -1) {
+    while((c = getopt_long(argc, argv, "b:c:d:e:hv", longopts, NULL)) != -1) {
         switch (c) {
             case 'b':
                 since_timestamp = optarg;
@@ -1065,7 +1064,9 @@ int main ( int argc, char *argv[] ){
 "journal-gateway-zmtp-sink -- receiving logs from journal-gateway-zmtp-source over the network\n\n"
 "Usage: journal-gateway-zmtp-sink   [--help] [--since] [--until]\n"
 "                                   [--since_cursor] [--until_cursor]\n"
-"                                   [--follow] [--reverse] [--filter]\n\n"
+"                                   [--follow] [--reverse] [--filter]\n"
+"                                   [--version]\n"
+"\n"
 "   --help      will show this\n"
 "   --since \trequires a timestamp with a format like \"2014-10-01 18:00:00\"\n"
 "   --until \tsee --since\n"
@@ -1079,6 +1080,9 @@ int main ( int argc, char *argv[] ){
 "For further controls use the journal-gateway-zmtp-control tool\n"
 "\n"
                 );
+                return 0;
+            case 'v':
+                fprintf(stdout, "Journal-Gateway-ZMTP Version %d.%d.%d\n", VMAYOR, VMINOR, VPATCH);
                 return 0;
             case 0:     /* getopt_long() set a variable, just keep going */
                 break;

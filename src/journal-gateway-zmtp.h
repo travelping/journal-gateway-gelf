@@ -17,3 +17,7 @@
 #define SLEEP 100000L // 1500000L //  500000000L
 
 #define UNUSED(x) (void)(x)
+
+#define VMAYOR 1
+#define VMINOR 0
+#define VPATCH 1
