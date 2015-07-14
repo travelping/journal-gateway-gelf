@@ -8,3 +8,8 @@
 #define ENV_CTRL_EXPOSED_SOCKET "GATEWAY_CONTROL_PEER"
 
 #define UNUSED(x) (void)(x)
+
+#define POLL_WAIT_TIME 100
+
+// zmq_poll timeout changed in v3 from micro- to milli-seconds
+#define ZMQ_VERSION_FACTOR 1000

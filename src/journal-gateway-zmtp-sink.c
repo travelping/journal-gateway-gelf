@@ -41,6 +41,7 @@ static zctx_t *ctx;
 static void *client, *router_control;
 static bool active = true;
 uint64_t initial_time;
+long poll_wait_time = POLL_WAIT_TIME;
 
 /* cli arguments */
 int     reverse=0, at_most=-1, follow=0, listening=1;
@@ -960,6 +961,10 @@ int main ( int argc, char *argv[] ){
     int major, minor, patch;
     zmq_version(&major, &minor, &patch);
 
+    if(major<3){
+        poll_wait_time *= ZMQ_VERSION_FACTOR;
+    }
+
     printf("Uses ZMQ version %d.%d.%d\n", major, minor, patch);
 
     /* ensure existence of a machine id */
@@ -1006,7 +1011,7 @@ int main ( int argc, char *argv[] ){
     s_catch_signals();
     /* receive controls or logs, initiate connections to new sources */
     while ( active ){
-        rc=zmq_poll (items, 2, 100);
+        rc=zmq_poll (items, 2, poll_wait_time);
         /* receive logs */
         if(items[0].revents & ZMQ_POLLIN){
             response = zmsg_recv(client);
