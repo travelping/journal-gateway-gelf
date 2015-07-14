@@ -6,6 +6,11 @@ A gateway for transmitting of systemds journal via a zmtp connection.
 Version 1.0.0 - 07 Jul 2015
 ---------------------------
 
+* Fixed overloading issue of the sink with ZMQ Versions < 3.0.0
+
+Version 1.0.0 - 07 Jul 2015
+---------------------------
+
 * The controls are now more intuitive:
     * Setting filters works in a set and commit fashion
     * Everything that can be set can also be shown
