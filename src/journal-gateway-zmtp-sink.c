@@ -44,7 +44,7 @@ uint64_t initial_time;
 long poll_wait_time = POLL_WAIT_TIME;
 
 /* cli arguments */
-int     reverse=0, at_most=-1, follow=0, listening=1;
+int     reverse=0, follow=0, listening=1;
 char    *since_timestamp=NULL, *until_timestamp=NULL, *client_socket_address=NULL, *control_socket_address=NULL,
         *format=NULL, *since_cursor=NULL, *until_cursor=NULL, *filter, *new_filter,
         *remote_journal_directory=NULL;
@@ -313,7 +313,6 @@ char* make_json_timestamp(char *timestamp){
 char *build_query_string(){
     json_t *query = json_object();
     if (reverse == 1) json_object_set_new(query, "reverse", json_true());
-    if (at_most >= 0) json_object_set_new(query, "at_most", json_integer(at_most));
     if (follow == 1) json_object_set_new(query, "follow", json_true());
     if (listening == 1) json_object_set_new(query, "listen", json_true());
     if (format != NULL) json_object_set_new(query, "format", json_string(format));
@@ -881,7 +880,6 @@ int main ( int argc, char *argv[] ){
 
     struct option longopts[] = {
         { "reverse",        no_argument,            &reverse,     1   },
-        { "at_most",        required_argument,      NULL,         'a' },
         { "since",          required_argument,      NULL,         'b' },
         { "until",          required_argument,      NULL,         'c' },
         { "since_cursor",   required_argument,      NULL,         'd' },
@@ -895,9 +893,6 @@ int main ( int argc, char *argv[] ){
     int c;
     while((c = getopt_long(argc, argv, "a:b:c:d:e:f:ghs:", longopts, NULL)) != -1) {
         switch (c) {
-            case 'a':
-                at_most = atoi(optarg);
-                break;
             case 'b':
                 since_timestamp = optarg;
                 break;
@@ -914,14 +909,13 @@ int main ( int argc, char *argv[] ){
                 fprintf(stdout,
 "journal-gateway-zmtp-sink -- receiving logs from journal-gateway-zmtp-source over the network\n\n"
 "Usage: journal-gateway-zmtp-sink   [--help] [--since] [--until]\n"
-"                                   [--since_cursor] [--until_cursor] [--at_most]\n"
+"                                   [--since_cursor] [--until_cursor]\n"
 "                                   [--follow] [--reverse] [--filter]\n\n"
 "   --help      will show this\n"
 "   --since \trequires a timestamp with a format like \"2014-10-01 18:00:00\"\n"
 "   --until \tsee --since\n"
 "   --since_cursor \trequires a log cursor, see e.g. 'journalctl -o export'\n"
 "   --until_cursor \tsee --since_cursor\n"
-"   --at_most \trequires a positive integer N, at most N logs will be sent\n"
 "\n"
 "The sink is used to wait for incomming messages from journal-gateway-zmtp-source via an exposed socket.\n"
 "Set this socket via the GATEWAY_LOG_PEER environment variable (must be usable by ZeroMQ).\n"
