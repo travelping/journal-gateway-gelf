@@ -422,8 +422,8 @@ int response_handler(zframe_t* cid, zmsg_t *response){
             con_hash_delete( &connections, lookup );
             ret=2;
         }
-        else{
-			assert(((char*)frame_data)[0] == '_');
+        // received a log message
+        else if(((char*)frame_data)[0] == '_'){
 
             Logging_sources *logging_source = NULL;
             Journalentry_fieldpins pins;
@@ -471,6 +471,11 @@ int response_handler(zframe_t* cid, zmsg_t *response){
             write(fd, pins.monotonic_start, (pins.monotonic_end - pins.monotonic_start + 1));
 
             write(fd, "\n", 1);
+        }
+        else{
+            char *buf = strndup(frame_data, frame_size);
+            sd_journal_print(LOG_NOTICE, "received unexpected frame: %s", buf);
+            free(buf);
         }
         zframe_destroy (&frame);
     }while(more);
