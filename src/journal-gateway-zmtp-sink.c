@@ -252,9 +252,9 @@ int pinpoint_metafields(const char* start, char** equalsign, char** end){
 }
 
 int pinpoint_all_metafields(const char *j_entry, Journalentry_fieldpins *pins){
-    const char *cursor = "__CURSOR";
-    const char *realtime = "__REALTIME_TIMESTAMP";
-    const char *monotonic = "__MONOTONIC_TIMESTAMP";
+    const char cursor[] = "__CURSOR";
+    const char realtime[] = "__REALTIME_TIMESTAMP";
+    const char monotonic[] = "__MONOTONIC_TIMESTAMP";
     //    start    equalsign   end
     char *s=NULL, *eq = NULL, *e = NULL;
 
@@ -453,9 +453,9 @@ int response_handler(zframe_t* cid, zmsg_t *response){
             write(fd, pins.monotonic_end+1, frame_size-(pins.monotonic_end - pins.cursor_start + 1));
 
             // original timestamps with prefixes
-            write(fd, orig_prefix, sizeof(orig_prefix));
+            write(fd, orig_prefix, sizeof(orig_prefix) -1);
             write(fd, pins.realtime_start, (pins.realtime_end - pins.realtime_start + 1));
-            write(fd, orig_prefix, sizeof(orig_prefix));
+            write(fd, orig_prefix, sizeof(orig_prefix) -1);
             write(fd, pins.monotonic_start, (pins.monotonic_end - pins.monotonic_start + 1));
 
             write(fd, "\n", 1);
