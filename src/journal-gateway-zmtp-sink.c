@@ -218,6 +218,12 @@ int get_timestamps(clockid_t clk_id, char *buf, size_t buf_len, size_t *ts_lengt
 }
 
 //helper for handling fields in journal
+//the only information we're interested in are the value of the 3 systemd unique meta fields
+//CURSOR, REALTIME_TIMESTAMP, MONOTONIC_TIMESTAMP (always the first 3, in this order)
+//and the position and length of the meta field MACHINE_ID
+//you can pass a valid pointer to 'equalsign' to signal
+//that one of the 3 systemd unique meta fields is handled
+//after execution 'equalsign' and 'end' point to the corresponding position in the string
 //1: unexpected parsing error
 //-1: in field _machine_id (done with pinpointing)
 int pinpoint_metafields(const char* start, char** equalsign, char** end){
@@ -225,23 +231,28 @@ int pinpoint_metafields(const char* start, char** equalsign, char** end){
     const char *machine_id_key = "_MACHINE_ID";
     char *akt_pos = (char*)start;       // casting to avoid compiler complaints
 
+    // no systemd unique meta field
     if ( *equalsign == NULL ){
+        // machine id field
         if ( strncmp(akt_pos, machine_id_key, sizeof(machine_id_key)) == 0 ){
             akt_pos += sizeof(machine_id_key);
             ret = -1;
         }
     }
+    // search for '='  or '\n' as key-value separator (\n only appears with multi line values)
     while( akt_pos[0] != '=' && akt_pos[0] != '\n' ){
         akt_pos++;
     }
     if ( akt_pos[0] == '=' ){
         *equalsign=akt_pos;
+        // '\n' marks the end of single line meta field
         while( akt_pos[0] != '\n' ){
             akt_pos++;
         }
     }
     else if ( akt_pos[0] == '\n'){
         akt_pos++;
+        // multi line messages have their length encoded in the first entries after the key
         uint64_t value_offset = le64toh((uint64_t) *akt_pos);
         akt_pos += sizeof(uint64_t);
         *equalsign=akt_pos;
@@ -251,6 +262,7 @@ int pinpoint_metafields(const char* start, char** equalsign, char** end){
     return ret;
 }
 
+/* retrieving positions of the 3 journal unique meta fields in the journal entry */
 int pinpoint_all_metafields(const char *j_entry, Journalentry_fieldpins *pins){
     const char cursor[] = "__CURSOR";
     const char realtime[] = "__REALTIME_TIMESTAMP";
