@@ -361,7 +361,7 @@ static void s_catch_signals (){
     sigaction(SIGTERM, &action, NULL);
 }
 
-/* Do sth with the received (log)message */
+/* Do something with the received (log)message */
 int response_handler(zframe_t* cid, zmsg_t *response){
     zframe_t *frame;
     void *frame_data;
@@ -527,7 +527,7 @@ int control_handler (zmsg_t *command_msg, zframe_t *cid){
 
 /* control API functions */
 
-// returns a string with the help dialogue
+// returns a string with the help dialog
 void show_help(char *ret){
     const char *msg =
         "You are talking with %s \n"
@@ -535,18 +535,18 @@ void show_help(char *ret){
         "\n"
         "       help                    will show this\n"
         "\n"
-        "   Changing the logfilters:\n"
+        "   Changing the log filters:\n"
         "   You need to set the desired filters and commit them afterwards\n"
         "       filter_add [FIELD]      requires input of the form VARIABLE=value\n"
         "                               successively added filters are ORed together\n"
         "       filter_add_conjunction  adds an AND to the list of filters, allowing to AND together the filters\n"
         "       filter_flush            drops all currently set filters\n"
         "       filter_show             shows the currently set filters\n"
-        "       filter_commit           applies the currently set filters (all sources will only send coresponding messages)\n"
+        "       filter_commit           applies the currently set filters (all sources will only send corresponding messages)\n"
         "                               WARNING: this will set the same filter on EVERY source\n"
         "\n"
         "       set_exposed_port [PORT] requires a valid tcp port (default: tcp://127.0.0.1:5555)\n"
-        "       show_exposed_port       shows the port on which the sink listens for incomming logs\n"
+        "       show_exposed_port       shows the port on which the sink listens for incoming logs\n"
         "       show_sources            shows the connected sources (characterized as ZMQ connection-IDs)\n"
         "\n"
         "       set_log_directory [DIR] sets the directory in which the received logs will be stored\n"
@@ -675,7 +675,7 @@ int filter_commit(zframe_t **response){
         zmsg_send (&m, client);
     }
     free(query_string);
-    char *stringh = "filter commited\n";
+    char *stringh = "filter committed\n";
     *response = zframe_new(stringh,strlen(stringh));
     return 1;
 }
