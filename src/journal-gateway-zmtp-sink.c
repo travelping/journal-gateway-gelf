@@ -373,6 +373,105 @@ static void s_catch_signals (){
     sigaction(SIGTERM, &action, NULL);
 }
 
+static void s_ignore_broken_pipe() {
+    struct sigaction action;
+    action.sa_handler = SIG_IGN;
+    action.sa_flags = 0;
+    sigemptyset (&action.sa_mask);
+    sigaction(SIGPIPE, &action, NULL);
+}
+
+int wrapper_ls_hash_find_or_create(const char *machine_id, Logging_source_t **src){
+    Logging_source_t *new_src;
+    HASH_FIND_STR(logging_sources, machine_id, new_src);
+    if (new_src == NULL){   // new machine id
+        new_src = (Logging_source_t *) malloc( sizeof(Logging_source_t));
+        assert(new_src);
+        new_src->sjr = create_log_filestream(machine_id);
+        new_src->src_machine_id = machine_id;
+        HASH_ADD_STR(logging_sources, src_machine_id, new_src);
+    }
+    *src = new_src;
+    return 1;
+}
+
+int try_write(int fd, const void *buf, size_t count, char *machine_id){
+    int rc = write(fd, buf, count);
+    //every thing's fine
+    if (rc >= 0) {
+        return 1;
+    }
+    //something went wrong
+    else{
+        //stream is closed, reopen again
+        if (errno==EBADF){
+            sd_journal_print(LOG_ERR, "file stream for machine id %s was closed, reopening...", machine_id);
+            Logging_source_t *src = NULL;
+            wrapper_ls_hash_find_or_create(machine_id, &src);
+            pclose(src->sjr);
+            src->sjr = create_log_filestream(machine_id);
+            sd_journal_print(LOG_INFO, "file stream for machine id %s was closed, reopened", machine_id);
+            return 1;
+        }
+        else{
+            sd_journal_print(LOG_ERR,
+                "file stream for machine id %s has an issue, trying to close and open again", machine_id);
+            Logging_source_t *src = NULL;
+            wrapper_ls_hash_find_or_create(machine_id, &src);
+            pclose(src->sjr);
+            src->sjr = create_log_filestream(machine_id);
+            sd_journal_print(LOG_INFO,
+                "file stream for machine id %s had an issue, reopened", machine_id);
+            return 0;
+        }
+    }
+}
+
+//writing the received journal entry in the corresponding journal file
+//the location and name of the file depends on the value of the
+//_MACHINE_ID meta field
+int write_remote_log(void *frame_data, size_t frame_size){
+    Logging_source_t *logging_source = NULL;
+    Journalentry_fieldpins pins;
+    pinpoint_all_metafields(frame_data, &pins);
+    char *log_machine_id = strndup(pins.machine_id_value, (pins.machine_id_end - pins.machine_id_value));
+    wrapper_ls_hash_find_or_create(log_machine_id, &logging_source);
+    int fd = fileno(logging_source->sjr);
+
+    const char realtime_prefix[]  = "__REALTIME_TIMESTAMP=";
+    const char monotonic_prefix[] = "__MONOTONIC_TIMESTAMP=";
+    const char orig_prefix[]      = "X";
+    char timestamp_buffer[20];      // 20 = most chars an int64_t consumes in readable form
+    size_t timestamp_buffer_end;
+
+    //original cursor
+    try_write(fd, pins.cursor_start, (pins.cursor_end - pins.cursor_start + 1), log_machine_id);
+
+    //host realtime timestamp
+    get_timestamps(CLOCK_REALTIME, timestamp_buffer, sizeof(timestamp_buffer), &timestamp_buffer_end);
+    try_write(fd, realtime_prefix, sizeof(realtime_prefix) -1, log_machine_id);
+    try_write(fd, timestamp_buffer, timestamp_buffer_end, log_machine_id);
+    try_write(fd, "\n", 1, log_machine_id);
+
+    //host monotonic timestamp
+    get_timestamps(CLOCK_MONOTONIC, timestamp_buffer, sizeof(timestamp_buffer), &timestamp_buffer_end);
+    try_write(fd, monotonic_prefix, sizeof(monotonic_prefix) -1, log_machine_id);
+    try_write(fd, timestamp_buffer, timestamp_buffer_end, log_machine_id);
+    try_write(fd, "\n", 1, log_machine_id);
+
+    // original body
+    try_write(fd, pins.monotonic_end+1, frame_size-(pins.monotonic_end - pins.cursor_start + 1), log_machine_id);
+
+    // original timestamps with prefixes
+    try_write(fd, orig_prefix, sizeof(orig_prefix) -1, log_machine_id);
+    try_write(fd, pins.realtime_start, (pins.realtime_end - pins.realtime_start + 1), log_machine_id);
+    try_write(fd, orig_prefix, sizeof(orig_prefix) -1, log_machine_id);
+    try_write(fd, pins.monotonic_start, (pins.monotonic_end - pins.monotonic_start + 1), log_machine_id);
+
+    try_write(fd, "\n", 1, log_machine_id);
+    return 1;
+}
+
 /* Do something with the received (log)message */
 int response_handler(zframe_t* cid, zmsg_t *response){
     zframe_t *frame;
@@ -424,57 +523,16 @@ int response_handler(zframe_t* cid, zmsg_t *response){
         }
         // received a log message
         else if(((char*)frame_data)[0] == '_'){
-
-            Logging_source_t *logging_source = NULL;
-            Journalentry_fieldpins pins;
-            pinpoint_all_metafields(frame_data, &pins);
-            char *log_machine_id = strndup(pins.machine_id_value, (pins.machine_id_end - pins.machine_id_value));
-            HASH_FIND_STR(logging_sources, log_machine_id, logging_source);
-            if ( logging_source == NULL){   // new machine id
-                logging_source = (Logging_source_t *) malloc( sizeof(Logging_source_t));
-                assert(logging_source);
-                logging_source->sjr = create_log_filestream(log_machine_id);
-                logging_source->src_machine_id = log_machine_id;
-                HASH_ADD_STR(logging_sources, src_machine_id, logging_source);
-            }
-            int fd = fileno(logging_source->sjr);
-			fflush(stderr);
-
-            const char realtime_prefix[]  = "__REALTIME_TIMESTAMP=";
-            const char monotonic_prefix[] = "__MONOTONIC_TIMESTAMP=";
-            const char orig_prefix[]      = "X";
-            char timestamp_buffer[20];      // 20 = most chars an int64_t consumes in readable form
-            size_t timestamp_buffer_end;
-
-            //original cursor
-            write(fd, pins.cursor_start, (pins.cursor_end - pins.cursor_start + 1));
-
-            //host realtime timestamp
-            get_timestamps(CLOCK_REALTIME, timestamp_buffer, sizeof(timestamp_buffer), &timestamp_buffer_end);
-            write(fd, realtime_prefix, sizeof(realtime_prefix) -1);
-            write(fd, timestamp_buffer, timestamp_buffer_end);
-            write(fd, "\n", 1);
-
-            //host monotonic timestamp
-            get_timestamps(CLOCK_MONOTONIC, timestamp_buffer, sizeof(timestamp_buffer), &timestamp_buffer_end);
-            write(fd, monotonic_prefix, sizeof(monotonic_prefix) -1);
-            write(fd, timestamp_buffer, timestamp_buffer_end);
-            write(fd, "\n", 1);
-
-            // original body
-            write(fd, pins.monotonic_end+1, frame_size-(pins.monotonic_end - pins.cursor_start + 1));
-
-            // original timestamps with prefixes
-            write(fd, orig_prefix, sizeof(orig_prefix) -1);
-            write(fd, pins.realtime_start, (pins.realtime_end - pins.realtime_start + 1));
-            write(fd, orig_prefix, sizeof(orig_prefix) -1);
-            write(fd, pins.monotonic_start, (pins.monotonic_end - pins.monotonic_start + 1));
-
-            write(fd, "\n", 1);
+            write_remote_log(frame_data, frame_size);
         }
         else{
-            char *buf = strndup(frame_data, frame_size);
-            sd_journal_print(LOG_NOTICE, "received unexpected frame: %s", buf);
+            char *buf = malloc(frame_size+1);
+            memcpy(buf, frame_data, frame_size);
+            buf[frame_size] = NULL;
+            sd_journal_send("PRIORITY=%i", LOG_NOTICE,
+                            "MESSAGE=received unexpected frame: %s", buf,
+                            "DUMP=%s", buf,
+                            NULL);
             free(buf);
         }
         zframe_destroy (&frame);
@@ -1020,6 +1078,8 @@ int main ( int argc, char *argv[] ){
 
     // /* for stopping the gateway via keystroke (ctrl-c) */
     s_catch_signals();
+    s_ignore_broken_pipe();
+
     /* receive controls or logs, initiate connections to new sources */
     while ( active ){
         rc=zmq_poll (items, 2, poll_wait_time);
