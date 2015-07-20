@@ -64,13 +64,13 @@ typedef struct {
     char            *src_machine_id;
     FILE            *sjr;
     UT_hash_handle  hh; /*requirement for uthash*/
-}Logging_sources;
+}Logging_source_t;
 
 // hash to note every incomming connection
 Connection *connections = NULL;
 
 // hash to note every outgoing log (differentiated by machine-id of the logging machine)
-Logging_sources *logging_sources = NULL;
+Logging_source_t *logging_sources = NULL;
 
 typedef struct {
     char *cursor_start;
@@ -425,13 +425,13 @@ int response_handler(zframe_t* cid, zmsg_t *response){
         // received a log message
         else if(((char*)frame_data)[0] == '_'){
 
-            Logging_sources *logging_source = NULL;
+            Logging_source_t *logging_source = NULL;
             Journalentry_fieldpins pins;
             pinpoint_all_metafields(frame_data, &pins);
             char *log_machine_id = strndup(pins.machine_id_value, (pins.machine_id_end - pins.machine_id_value));
             HASH_FIND_STR(logging_sources, log_machine_id, logging_source);
             if ( logging_source == NULL){   // new machine id
-                logging_source = (Logging_sources *) malloc( sizeof(Logging_sources));
+                logging_source = (Logging_source_t *) malloc( sizeof(Logging_source_t));
                 assert(logging_source);
                 logging_source->sjr = create_log_filestream(log_machine_id);
                 logging_source->src_machine_id = log_machine_id;
@@ -749,7 +749,7 @@ int set_log_directory(char *new_directory){
     free(remote_journal_directory);
     remote_journal_directory = new_directory;
     // adjust filestreams
-    Logging_sources *i, *tmp;
+    Logging_source_t *i, *tmp;
     HASH_ITER(hh, logging_sources, i, tmp){
         pclose(i->sjr);
         i->sjr = create_log_filestream(i->src_machine_id);
