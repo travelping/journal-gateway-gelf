@@ -183,14 +183,48 @@ FILE* create_log_filestream(char *client_key){
                 break;
             default:
                 // some other error occured
-                fprintf(stderr, "Error while creating the directory, errno: %d \n", errno);
+                sd_journal_print(LOG_ERR, "error while creating the directory, errno: %d", errno);
         }
     }
     ret = popen(pathtojournalfile, "w");
+    // if popen call failed
+    if(ret == NULL){
+        switch(errno){
+            case EINVAL:
+                sd_journal_print(LOG_ERR, "error while opening file stream to systemd-journal-remote: %s",
+                    "type argument invalid");
+                break;
+            case EAGAIN:
+                sd_journal_print(LOG_ERR, "error while opening file stream to systemd-journal-remote: %s",
+                    "fork() cannot allocate sufficient memory OR the caller's RLIMIT_NPROC resource limit was encountered");
+                break;
+            case ENOMEM:
+                sd_journal_print(LOG_ERR, "error while opening file stream to systemd-journal-remote: %s",
+                    "fork() failed to allocate the necessary kernel structures because memory is tight");
+                break;
+            case ENOSYS:
+                sd_journal_print(LOG_ERR, "error while opening file stream to systemd-journal-remote: %s",
+                    "fork() is not supported on this platform");
+                break;
+            case EFAULT:
+                sd_journal_print(LOG_ERR, "error while opening file stream to systemd-journal-remote: %s",
+                    "pipefd is not valid");
+                break;
+            case EMFILE:
+                sd_journal_print(LOG_ERR, "error while opening file stream to systemd-journal-remote: %s",
+                    "too many file descriptors are in use by the process.");
+                break;
+            case ENFILE:
+                sd_journal_print(LOG_ERR, "error while opening file stream to systemd-journal-remote: %s",
+                    "the system limit on the total number of open files has been reached");
+                break;
+            default:
+                sd_journal_print(LOG_ERR, "error while creating the directory, errno: %d", errno);
+        }
+    }
 
     free(pathtojournalfile);
     free(new_directory);
-    assert(ret);
     return ret;
 }
 
@@ -388,6 +422,7 @@ int wrapper_ls_hash_find_or_create(const char *machine_id, Logging_source_t **sr
         new_src = (Logging_source_t *) malloc( sizeof(Logging_source_t));
         assert(new_src);
         new_src->sjr = create_log_filestream(machine_id);
+        assert(new_src->sjr);
         new_src->src_machine_id = machine_id;
         HASH_ADD_STR(logging_sources, src_machine_id, new_src);
     }
@@ -410,8 +445,13 @@ int try_write(int fd, const void *buf, size_t count, char *machine_id){
             wrapper_ls_hash_find_or_create(machine_id, &src);
             pclose(src->sjr);
             src->sjr = create_log_filestream(machine_id);
+            //stream still closed due to some issues
+            if(src->sjr == NULL){
+                sd_journal_print(LOG_ERR, "reopening of file stream for machine id %s failed", machine_id);
+                return 0;
+            }
             sd_journal_print(LOG_INFO, "file stream for machine id %s was closed, reopened", machine_id);
-            return 1;
+            return -1;
         }
         else{
             sd_journal_print(LOG_ERR,
@@ -420,11 +460,30 @@ int try_write(int fd, const void *buf, size_t count, char *machine_id){
             wrapper_ls_hash_find_or_create(machine_id, &src);
             pclose(src->sjr);
             src->sjr = create_log_filestream(machine_id);
+            //stream still closed due to some issues
+            if(src->sjr == NULL){
+                sd_journal_print(LOG_ERR, "reopening of file stream for machine id %s failed", machine_id);
+                return 0;
+            }
             sd_journal_print(LOG_INFO,
                 "file stream for machine id %s had an issue, reopened", machine_id);
-            return 0;
+            return -1;
         }
     }
+}
+
+typedef struct{
+    int fd;
+    int ok;
+    char *log_machine_id;
+}whelper;
+
+int whelper_write(whelper *h, const void *buf, size_t count){
+    if (h->ok != 1){
+        return 0;
+    }
+    h->ok = try_write(h->fd, buf, count, h->log_machine_id);
+    return 1;
 }
 
 //writing the received journal entry in the corresponding journal file
@@ -432,11 +491,14 @@ int try_write(int fd, const void *buf, size_t count, char *machine_id){
 //_MACHINE_ID meta field
 int write_remote_log(void *frame_data, size_t frame_size){
     Logging_source_t *logging_source = NULL;
+    whelper h;
+
     Journalentry_fieldpins pins;
     pinpoint_all_metafields(frame_data, &pins);
-    char *log_machine_id = strndup(pins.machine_id_value, (pins.machine_id_end - pins.machine_id_value));
-    wrapper_ls_hash_find_or_create(log_machine_id, &logging_source);
-    int fd = fileno(logging_source->sjr);
+    h.log_machine_id = strndup(pins.machine_id_value, (pins.machine_id_end - pins.machine_id_value));
+    wrapper_ls_hash_find_or_create(h.log_machine_id, &logging_source);
+    h.fd = fileno(logging_source->sjr);
+    h.ok = 1;
 
     const char realtime_prefix[]  = "__REALTIME_TIMESTAMP=";
     const char monotonic_prefix[] = "__MONOTONIC_TIMESTAMP=";
@@ -445,30 +507,35 @@ int write_remote_log(void *frame_data, size_t frame_size){
     size_t timestamp_buffer_end;
 
     //original cursor
-    try_write(fd, pins.cursor_start, (pins.cursor_end - pins.cursor_start + 1), log_machine_id);
+    whelper_write(&h, pins.cursor_start, (pins.cursor_end - pins.cursor_start + 1));
 
     //host realtime timestamp
     get_timestamps(CLOCK_REALTIME, timestamp_buffer, sizeof(timestamp_buffer), &timestamp_buffer_end);
-    try_write(fd, realtime_prefix, sizeof(realtime_prefix) -1, log_machine_id);
-    try_write(fd, timestamp_buffer, timestamp_buffer_end, log_machine_id);
-    try_write(fd, "\n", 1, log_machine_id);
+    whelper_write(&h, realtime_prefix, sizeof(realtime_prefix) -1);
+    whelper_write(&h, timestamp_buffer, timestamp_buffer_end);
+    whelper_write(&h, "\n", 1);
 
     //host monotonic timestamp
     get_timestamps(CLOCK_MONOTONIC, timestamp_buffer, sizeof(timestamp_buffer), &timestamp_buffer_end);
-    try_write(fd, monotonic_prefix, sizeof(monotonic_prefix) -1, log_machine_id);
-    try_write(fd, timestamp_buffer, timestamp_buffer_end, log_machine_id);
-    try_write(fd, "\n", 1, log_machine_id);
+    whelper_write(&h, monotonic_prefix, sizeof(monotonic_prefix) -1);
+    whelper_write(&h, timestamp_buffer, timestamp_buffer_end);
+    whelper_write(&h, "\n", 1);
 
     // original body
-    try_write(fd, pins.monotonic_end+1, frame_size-(pins.monotonic_end - pins.cursor_start + 1), log_machine_id);
+    whelper_write(&h, pins.monotonic_end+1, frame_size-(pins.monotonic_end - pins.cursor_start + 1));
 
     // original timestamps with prefixes
-    try_write(fd, orig_prefix, sizeof(orig_prefix) -1, log_machine_id);
-    try_write(fd, pins.realtime_start, (pins.realtime_end - pins.realtime_start + 1), log_machine_id);
-    try_write(fd, orig_prefix, sizeof(orig_prefix) -1, log_machine_id);
-    try_write(fd, pins.monotonic_start, (pins.monotonic_end - pins.monotonic_start + 1), log_machine_id);
+    whelper_write(&h, orig_prefix, sizeof(orig_prefix) -1);
+    whelper_write(&h, pins.realtime_start, (pins.realtime_end - pins.realtime_start + 1));
+    whelper_write(&h, orig_prefix, sizeof(orig_prefix) -1);
+    whelper_write(&h, pins.monotonic_start, (pins.monotonic_end - pins.monotonic_start + 1));
 
-    try_write(fd, "\n", 1, log_machine_id);
+    // end of log
+    whelper_write(&h, "\n", 1);
+
+    if(h.ok!=1){
+        return 0;
+    }
     return 1;
 }
 
@@ -523,7 +590,10 @@ int response_handler(zframe_t* cid, zmsg_t *response){
         }
         // received a log message
         else if(((char*)frame_data)[0] == '_'){
-            write_remote_log(frame_data, frame_size);
+            if(!write_remote_log(frame_data, frame_size)){
+                sd_journal_print(LOG_ERR, "writing of log message to journal file failed");
+                ret = -2;
+            }
         }
         else{
             char *buf = malloc(frame_size+1);
@@ -648,7 +718,7 @@ int filter_add(const char *filter_addition, zframe_t **response){
         filter_suffix = "\"]]";
     }
     else{
-        fprintf(stderr, "%s\n", "erroneus filter inserted, abbort");
+        sd_journal_print(LOG_ERR, "%s\n", "erroneus filter inserted, abbort");
         return 0;
     }
     int length_addition = strlen(filter_addition)+strlen(filter_prefix)+strlen(filter_suffix);
@@ -756,13 +826,13 @@ int filter_commit(zframe_t **response){
 }
 
 /* changing the exposed port */
-int set_exposed_port(int port){
-    int ret = 0;
+int set_exposed_port(int port, zframe_t **response){
     // check for valid port
     if(port <= 1023 || 65536 <= port){
-        ret = -1;
-        fprintf(stderr, "%s\n", "Port not set, please choose a valid one ( >1023, <65536 )");
-        return ret;
+        sd_journal_print(LOG_NOTICE, "%s", "attempt to set port to an invalid option");
+        char *stringh = "port not set, please choose a valid one ( >1023, <65536 )\n";
+        *response = zframe_new(stringh,strlen(stringh));
+        return -1;
     }
 
     // actual change of the port
@@ -775,9 +845,12 @@ int set_exposed_port(int port){
     sprintf(client_socket_address, "tcp://127.0.0.1:%d", port);
     rc = zsocket_bind(client, client_socket_address);
     assert( rc );
-    sd_journal_print(LOG_INFO, "Changed exposed port to %s", client_socket_address);
+    sd_journal_print(LOG_INFO, "changed exposed port to %s", client_socket_address);
 
-    return ret;
+    char *stringh2 = "port changed\n";
+    *response = zframe_new(stringh2,strlen(stringh2));
+
+    return 0;
 }
 
 /* showing the exposed port */
@@ -787,7 +860,7 @@ int show_exposed_port(zframe_t **response){
 }
 
 /* changing the directory, in which the remote journals are stored*/
-int set_log_directory(char *new_directory){
+int set_log_directory(char *new_directory, zframe_t **response){
     int ret = 1;
 
     // create specified directory with rwxrw-rw-
@@ -800,7 +873,8 @@ int set_log_directory(char *new_directory){
                 break;
             default:
                 // some other error occured
-                fprintf(stderr, "Error while creating the directory, errno: %d \n", errno);
+                char *stringh = "error while creating the directory\n";
+                *response = zframe_new(stringh,strlen(stringh));
                 return -1;
         }
     }
@@ -811,8 +885,16 @@ int set_log_directory(char *new_directory){
     HASH_ITER(hh, logging_sources, i, tmp){
         pclose(i->sjr);
         i->sjr = create_log_filestream(i->src_machine_id);
+        //stream not open
+        if(i->sjr == NULL){
+            sd_journal_print(LOG_ERR, "opening of file stream for machine id %s failed", i->src_machine_id);
+            char *stringh = "error while opening the file stream\n";
+            *response = zframe_new(stringh,strlen(stringh));
+            return -2;
+        }
     }
-
+    char *stringh = "directory set\n";
+    *response = zframe_new(stringh,strlen(stringh));
     return ret;
 }
 
@@ -910,16 +992,14 @@ int execute_command(opcode command_id, json_t *command_arg, zframe_t **response)
             break;
         case SET_EXPOSED_PORT:
             port = get_arg_int(command_arg);
-            set_exposed_port(port);
-            *response = zframe_new(CTRL_ACCEPTED,strlen(CTRL_ACCEPTED));
+            set_exposed_port(port, response);
             break;
         case SHOW_EXPOSED_PORT:
             show_exposed_port(response);
             break;
         case SET_LOG_DIRECTORY:
             dir = get_arg_string(command_arg);
-            set_log_directory(dir);
-            *response = zframe_new(CTRL_ACCEPTED,strlen(CTRL_ACCEPTED));
+            set_log_directory(dir, response);
             break;
         case SHOW_LOG_DIRECTORY:
             show_log_directory(response);
