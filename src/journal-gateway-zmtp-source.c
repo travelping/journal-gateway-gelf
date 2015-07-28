@@ -254,7 +254,7 @@ int show_help(char *ret){
         "\n"
         "       shutdown                stops this application\n"
         "\n\n";
-    sprintf(ret, msg);
+    sprintf(ret, msg, program_invocation_short_name);
     return 1;
 }
 
