@@ -871,7 +871,7 @@ int set_log_directory(char *new_directory, zframe_t **response){
                 // directory already exists, everything's fine
                 ret = 1;
                 break;
-            default:
+            default: {}
                 // some other error occured
                 char *stringh = "error while creating the directory\n";
                 *response = zframe_new(stringh,strlen(stringh));
