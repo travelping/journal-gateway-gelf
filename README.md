@@ -95,7 +95,6 @@ Installing the gateway will also install a service file to execute the gateway a
 systemctl start journal-gateway-zmtp-source    # connects by default to "tcp://127.0.0.1:5555"
 ```
 
-If you need other sockets you can write a configuration file for the service:
 The service looks for a configuration file named "zmq_gateway_source.conf" in the directory "~/conf". You can change the socket there (this only has an effect, if you execute the gateway as a systemd unit).
 
 If you want to start the gateway without using systemd, you can type
