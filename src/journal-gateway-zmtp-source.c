@@ -1205,6 +1205,6 @@ The journal-gateway-zmtp-sink has to expose the given socket.\n\n"
     send_flag(frontend, NULL, LOGOFF);
 
     zctx_destroy (&ctx);
-    sd_journal_print(LOG_INFO, "...gateway stopped");
+    sd_journal_print(LOG_INFO, "...gateway source stopped");
     return 0;
 }

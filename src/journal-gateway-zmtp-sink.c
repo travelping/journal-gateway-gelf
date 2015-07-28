@@ -1219,7 +1219,7 @@ int main ( int argc, char *argv[] ){
     zsocket_destroy (ctx, router_control);
     zctx_destroy (&ctx);
 
-    sd_journal_print(LOG_INFO, "...gateway stopped");
+    sd_journal_print(LOG_INFO, "...gateway sink stopped");
     return 0;
 }
 #endif
