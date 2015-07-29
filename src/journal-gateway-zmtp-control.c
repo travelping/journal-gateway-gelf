@@ -109,12 +109,11 @@ int send_command(void *socket, char *command, char *argument){
 
 void show_help(){
     printf("Control tool for the journal-gateway-zmtp-source or -sink\n"
-        "usage: %s [command] [argument]\n"
-        "The target is set via environment variable %s\n"
-        "\n"
-        "\"help\" was sent to the target\n",
-        program_invocation_short_name,
-        ENV_CTRL_TARGET);
+        "usage: %s endpoint command [argument]\n"
+        "endpoint:  transport://adress (e.g. tcp://127.0.0.1:27001)\n"
+        "command:   command that the enpoint understands, send \"help\" for a list of commands\n"
+        "\n",
+        program_invocation_short_name);
 }
 
 int main (int argc, char *argv[]){
@@ -124,37 +123,41 @@ int main (int argc, char *argv[]){
     /* for stopping via keystroke ctrl-c*/
     s_catch_signals();
 
-    char *control_peer_target = NULL;
+    char *control_peer_target=NULL;
+    char *command="", *argument="";
     int rc;
+    if (argc==1){
+        show_help();
+        return 0;
+    }
+    else if(argc==2){
+        control_peer_target=argv[1];
+        command="help";
+        printf("sent \"help\" to the endpoint\n");
+    }
+    else if(argc==3){
+        control_peer_target=argv[1];
+        command=argv[2];
+    }
+    else{
+        control_peer_target=argv[1];
+        command=argv[2];
+        argument=argv[3];
+    }
 
     void *input_handler = zsocket_new (input_ctx, ZMQ_DEALER);
     assert(input_handler);
 
-    control_peer_target = getenv(ENV_CTRL_TARGET);
-    if (!control_peer_target) {
-        fprintf(stderr, "%s not specified, choosing the default (%s)\n", ENV_CTRL_TARGET, DEFAULT_CONTROL_TARGET);
-        control_peer_target = DEFAULT_CONTROL_TARGET;
-    }
-
     rc = zsocket_connect (input_handler, control_peer_target);
-    assert(!rc);
+    if(rc==-1){
+        fprintf(stderr, "chosen endpoint %s was invalid \n", control_peer_target);
+        return EINVAL;
+    }
 
     zmq_pollitem_t items[] = {
         { input_handler, 0, ZMQ_POLLIN, 0},
     };
 
-    char *command="", *argument="";
-    if (argc==1){
-        command="help";
-        show_help();
-    }
-    else if(argc==2){
-        command=argv[1];
-    }
-    else{
-        command=argv[1];
-        argument=argv[2];
-    }
     // send command to main thread
     rc = send_command(input_handler, command, argument);
     //sending failed, abbort
