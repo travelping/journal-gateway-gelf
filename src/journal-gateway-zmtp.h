@@ -13,6 +13,11 @@
 #define LOGON "\007"
 #define LOGOFF "\010"
 
-#define SLEEP 0 // 1500000L //  500000000L
+// seconds:   100 micro  1.5 milli    500 milli
+#define SLEEP 100000L // 1500000L //  500000000L
 
 #define UNUSED(x) (void)(x)
+
+#define VMAYOR 1
+#define VMINOR 0
+#define VPATCH 1

@@ -44,7 +44,7 @@ uint64_t initial_time;
 long poll_wait_time = POLL_WAIT_TIME;
 
 /* cli arguments */
-int     reverse=0, at_most=-1, follow=0, listening=1;
+int     reverse=0, follow=0, listening=1;
 char    *since_timestamp=NULL, *until_timestamp=NULL, *client_socket_address=NULL, *control_socket_address=NULL,
         *format=NULL, *since_cursor=NULL, *until_cursor=NULL, *filter, *new_filter,
         *remote_journal_directory=NULL;
@@ -64,13 +64,13 @@ typedef struct {
     char            *src_machine_id;
     FILE            *sjr;
     UT_hash_handle  hh; /*requirement for uthash*/
-}Logging_sources;
+}Logging_source_t;
 
 // hash to note every incomming connection
 Connection *connections = NULL;
 
 // hash to note every outgoing log (differentiated by machine-id of the logging machine)
-Logging_sources *logging_sources = NULL;
+Logging_source_t *logging_sources = NULL;
 
 typedef struct {
     char *cursor_start;
@@ -183,14 +183,48 @@ FILE* create_log_filestream(char *client_key){
                 break;
             default:
                 // some other error occured
-                fprintf(stderr, "Error while creating the directory, errno: %d \n", errno);
+                sd_journal_print(LOG_ERR, "error while creating the directory, errno: %d", errno);
         }
     }
     ret = popen(pathtojournalfile, "w");
+    // if popen call failed
+    if(ret == NULL){
+        switch(errno){
+            case EINVAL:
+                sd_journal_print(LOG_ERR, "error while opening file stream to systemd-journal-remote: %s",
+                    "type argument invalid");
+                break;
+            case EAGAIN:
+                sd_journal_print(LOG_ERR, "error while opening file stream to systemd-journal-remote: %s",
+                    "fork() cannot allocate sufficient memory OR the caller's RLIMIT_NPROC resource limit was encountered");
+                break;
+            case ENOMEM:
+                sd_journal_print(LOG_ERR, "error while opening file stream to systemd-journal-remote: %s",
+                    "fork() failed to allocate the necessary kernel structures because memory is tight");
+                break;
+            case ENOSYS:
+                sd_journal_print(LOG_ERR, "error while opening file stream to systemd-journal-remote: %s",
+                    "fork() is not supported on this platform");
+                break;
+            case EFAULT:
+                sd_journal_print(LOG_ERR, "error while opening file stream to systemd-journal-remote: %s",
+                    "pipefd is not valid");
+                break;
+            case EMFILE:
+                sd_journal_print(LOG_ERR, "error while opening file stream to systemd-journal-remote: %s",
+                    "too many file descriptors are in use by the process.");
+                break;
+            case ENFILE:
+                sd_journal_print(LOG_ERR, "error while opening file stream to systemd-journal-remote: %s",
+                    "the system limit on the total number of open files has been reached");
+                break;
+            default:
+                sd_journal_print(LOG_ERR, "error while creating the directory, errno: %d", errno);
+        }
+    }
 
     free(pathtojournalfile);
     free(new_directory);
-    assert(ret);
     return ret;
 }
 
@@ -218,6 +252,12 @@ int get_timestamps(clockid_t clk_id, char *buf, size_t buf_len, size_t *ts_lengt
 }
 
 //helper for handling fields in journal
+//the only information we're interested in are the value of the 3 systemd unique meta fields
+//CURSOR, REALTIME_TIMESTAMP, MONOTONIC_TIMESTAMP (always the first 3, in this order)
+//and the position and length of the meta field MACHINE_ID
+//you can pass a valid pointer to 'equalsign' to signal
+//that one of the 3 systemd unique meta fields is handled
+//after execution 'equalsign' and 'end' point to the corresponding position in the string
 //1: unexpected parsing error
 //-1: in field _machine_id (done with pinpointing)
 int pinpoint_metafields(const char* start, char** equalsign, char** end){
@@ -225,23 +265,28 @@ int pinpoint_metafields(const char* start, char** equalsign, char** end){
     const char *machine_id_key = "_MACHINE_ID";
     char *akt_pos = (char*)start;       // casting to avoid compiler complaints
 
+    // no systemd unique meta field
     if ( *equalsign == NULL ){
+        // machine id field
         if ( strncmp(akt_pos, machine_id_key, sizeof(machine_id_key)) == 0 ){
             akt_pos += sizeof(machine_id_key);
             ret = -1;
         }
     }
+    // search for '='  or '\n' as key-value separator (\n only appears with multi line values)
     while( akt_pos[0] != '=' && akt_pos[0] != '\n' ){
         akt_pos++;
     }
     if ( akt_pos[0] == '=' ){
         *equalsign=akt_pos;
+        // '\n' marks the end of single line meta field
         while( akt_pos[0] != '\n' ){
             akt_pos++;
         }
     }
     else if ( akt_pos[0] == '\n'){
         akt_pos++;
+        // multi line messages have their length encoded in the first entries after the key
         uint64_t value_offset = le64toh((uint64_t) *akt_pos);
         akt_pos += sizeof(uint64_t);
         *equalsign=akt_pos;
@@ -251,10 +296,11 @@ int pinpoint_metafields(const char* start, char** equalsign, char** end){
     return ret;
 }
 
+/* retrieving positions of the 3 journal unique meta fields in the journal entry */
 int pinpoint_all_metafields(const char *j_entry, Journalentry_fieldpins *pins){
-    const char *cursor = "__CURSOR";
-    const char *realtime = "__REALTIME_TIMESTAMP";
-    const char *monotonic = "__MONOTONIC_TIMESTAMP";
+    const char cursor[] = "__CURSOR";
+    const char realtime[] = "__REALTIME_TIMESTAMP";
+    const char monotonic[] = "__MONOTONIC_TIMESTAMP";
     //    start    equalsign   end
     char *s=NULL, *eq = NULL, *e = NULL;
 
@@ -313,7 +359,6 @@ char* make_json_timestamp(char *timestamp){
 char *build_query_string(){
     json_t *query = json_object();
     if (reverse == 1) json_object_set_new(query, "reverse", json_true());
-    if (at_most >= 0) json_object_set_new(query, "at_most", json_integer(at_most));
     if (follow == 1) json_object_set_new(query, "follow", json_true());
     if (listening == 1) json_object_set_new(query, "listen", json_true());
     if (format != NULL) json_object_set_new(query, "format", json_string(format));
@@ -362,7 +407,139 @@ static void s_catch_signals (){
     sigaction(SIGTERM, &action, NULL);
 }
 
-/* Do sth with the received (log)message */
+static void s_ignore_broken_pipe() {
+    struct sigaction action;
+    action.sa_handler = SIG_IGN;
+    action.sa_flags = 0;
+    sigemptyset (&action.sa_mask);
+    sigaction(SIGPIPE, &action, NULL);
+}
+
+int wrapper_ls_hash_find_or_create(const char *machine_id, Logging_source_t **src){
+    Logging_source_t *new_src;
+    HASH_FIND_STR(logging_sources, machine_id, new_src);
+    if (new_src == NULL){   // new machine id
+        new_src = (Logging_source_t *) malloc( sizeof(Logging_source_t));
+        assert(new_src);
+        new_src->sjr = create_log_filestream(machine_id);
+        assert(new_src->sjr);
+        new_src->src_machine_id = machine_id;
+        HASH_ADD_STR(logging_sources, src_machine_id, new_src);
+    }
+    *src = new_src;
+    return 1;
+}
+
+int try_write(int fd, const void *buf, size_t count, char *machine_id){
+    int rc = write(fd, buf, count);
+    //every thing's fine
+    if (rc >= 0) {
+        return 1;
+    }
+    //something went wrong
+    else{
+        //stream is closed, reopen again
+        if (errno==EBADF){
+            sd_journal_print(LOG_ERR, "file stream for machine id %s was closed, reopening...", machine_id);
+            Logging_source_t *src = NULL;
+            wrapper_ls_hash_find_or_create(machine_id, &src);
+            pclose(src->sjr);
+            src->sjr = create_log_filestream(machine_id);
+            //stream still closed due to some issues
+            if(src->sjr == NULL){
+                sd_journal_print(LOG_ERR, "reopening of file stream for machine id %s failed", machine_id);
+                return 0;
+            }
+            sd_journal_print(LOG_INFO, "file stream for machine id %s was closed, reopened", machine_id);
+            return -1;
+        }
+        else{
+            sd_journal_print(LOG_ERR,
+                "file stream for machine id %s has an issue, trying to close and open again", machine_id);
+            Logging_source_t *src = NULL;
+            wrapper_ls_hash_find_or_create(machine_id, &src);
+            pclose(src->sjr);
+            src->sjr = create_log_filestream(machine_id);
+            //stream still closed due to some issues
+            if(src->sjr == NULL){
+                sd_journal_print(LOG_ERR, "reopening of file stream for machine id %s failed", machine_id);
+                return 0;
+            }
+            sd_journal_print(LOG_INFO,
+                "file stream for machine id %s had an issue, reopened", machine_id);
+            return -1;
+        }
+    }
+}
+
+typedef struct{
+    int fd;
+    int ok;
+    char *log_machine_id;
+}whelper;
+
+int whelper_write(whelper *h, const void *buf, size_t count){
+    if (h->ok != 1){
+        return 0;
+    }
+    h->ok = try_write(h->fd, buf, count, h->log_machine_id);
+    return 1;
+}
+
+//writing the received journal entry in the corresponding journal file
+//the location and name of the file depends on the value of the
+//_MACHINE_ID meta field
+int write_remote_log(void *frame_data, size_t frame_size){
+    Logging_source_t *logging_source = NULL;
+    whelper h;
+
+    Journalentry_fieldpins pins;
+    pinpoint_all_metafields(frame_data, &pins);
+    h.log_machine_id = strndup(pins.machine_id_value, (pins.machine_id_end - pins.machine_id_value));
+    wrapper_ls_hash_find_or_create(h.log_machine_id, &logging_source);
+    h.fd = fileno(logging_source->sjr);
+    h.ok = 1;
+
+    const char realtime_prefix[]  = "__REALTIME_TIMESTAMP=";
+    const char monotonic_prefix[] = "__MONOTONIC_TIMESTAMP=";
+    const char orig_prefix[]      = "X";
+    char timestamp_buffer[20];      // 20 = most chars an int64_t consumes in readable form
+    size_t timestamp_buffer_end;
+
+    //original cursor
+    whelper_write(&h, pins.cursor_start, (pins.cursor_end - pins.cursor_start + 1));
+
+    //host realtime timestamp
+    get_timestamps(CLOCK_REALTIME, timestamp_buffer, sizeof(timestamp_buffer), &timestamp_buffer_end);
+    whelper_write(&h, realtime_prefix, sizeof(realtime_prefix) -1);
+    whelper_write(&h, timestamp_buffer, timestamp_buffer_end);
+    whelper_write(&h, "\n", 1);
+
+    //host monotonic timestamp
+    get_timestamps(CLOCK_MONOTONIC, timestamp_buffer, sizeof(timestamp_buffer), &timestamp_buffer_end);
+    whelper_write(&h, monotonic_prefix, sizeof(monotonic_prefix) -1);
+    whelper_write(&h, timestamp_buffer, timestamp_buffer_end);
+    whelper_write(&h, "\n", 1);
+
+    // original body
+    whelper_write(&h, pins.monotonic_end+1, frame_size-(pins.monotonic_end - pins.cursor_start + 1));
+
+    // original timestamps with prefixes
+    whelper_write(&h, orig_prefix, sizeof(orig_prefix) -1);
+    whelper_write(&h, pins.realtime_start, (pins.realtime_end - pins.realtime_start + 1));
+    whelper_write(&h, orig_prefix, sizeof(orig_prefix) -1);
+    whelper_write(&h, pins.monotonic_start, (pins.monotonic_end - pins.monotonic_start + 1));
+
+    // end of log
+    whelper_write(&h, "\n", 1);
+
+    if(h.ok!=1){
+        return 0;
+    }
+    return 1;
+}
+
+/* Do something with the received (log)message */
 int response_handler(zframe_t* cid, zmsg_t *response){
     zframe_t *frame;
     void *frame_data;
@@ -411,55 +588,22 @@ int response_handler(zframe_t* cid, zmsg_t *response){
             con_hash_delete( &connections, lookup );
             ret=2;
         }
-        else{
-			assert(((char*)frame_data)[0] == '_');
-
-            Logging_sources *logging_source = NULL;
-            Journalentry_fieldpins pins;
-            pinpoint_all_metafields(frame_data, &pins);
-            char *log_machine_id = strndup(pins.machine_id_value, (pins.machine_id_end - pins.machine_id_value));
-            HASH_FIND_STR(logging_sources, log_machine_id, logging_source);
-            if ( logging_source == NULL){   // new machine id
-                logging_source = (Logging_sources *) malloc( sizeof(Logging_sources));
-                assert(logging_source);
-                logging_source->sjr = create_log_filestream(log_machine_id);
-                logging_source->src_machine_id = log_machine_id;
-                HASH_ADD_STR(logging_sources, src_machine_id, logging_source);
+        // received a log message
+        else if(((char*)frame_data)[0] == '_'){
+            if(!write_remote_log(frame_data, frame_size)){
+                sd_journal_print(LOG_ERR, "writing of log message to journal file failed");
+                ret = -2;
             }
-            int fd = fileno(logging_source->sjr);
-			fflush(stderr);
-
-            const char realtime_prefix[]  = "__REALTIME_TIMESTAMP=";
-            const char monotonic_prefix[] = "__MONOTONIC_TIMESTAMP=";
-            const char orig_prefix[]      = "X";
-            char timestamp_buffer[20];      // 20 = most chars an int64_t consumes in readable form
-            size_t timestamp_buffer_end;
-
-            //original cursor
-            write(fd, pins.cursor_start, (pins.cursor_end - pins.cursor_start + 1));
-
-            //host realtime timestamp
-            get_timestamps(CLOCK_REALTIME, timestamp_buffer, sizeof(timestamp_buffer), &timestamp_buffer_end);
-            write(fd, realtime_prefix, sizeof(realtime_prefix) -1);
-            write(fd, timestamp_buffer, timestamp_buffer_end);
-            write(fd, "\n", 1);
-
-            //host monotonic timestamp
-            get_timestamps(CLOCK_MONOTONIC, timestamp_buffer, sizeof(timestamp_buffer), &timestamp_buffer_end);
-            write(fd, monotonic_prefix, sizeof(monotonic_prefix) -1);
-            write(fd, timestamp_buffer, timestamp_buffer_end);
-            write(fd, "\n", 1);
-
-            // original body
-            write(fd, pins.monotonic_end+1, frame_size-(pins.monotonic_end - pins.cursor_start + 1));
-
-            // original timestamps with prefixes
-            write(fd, orig_prefix, sizeof(orig_prefix));
-            write(fd, pins.realtime_start, (pins.realtime_end - pins.realtime_start + 1));
-            write(fd, orig_prefix, sizeof(orig_prefix));
-            write(fd, pins.monotonic_start, (pins.monotonic_end - pins.monotonic_start + 1));
-
-            write(fd, "\n", 1);
+        }
+        else{
+            char *buf = malloc(frame_size+1);
+            memcpy(buf, frame_data, frame_size);
+            buf[frame_size] = NULL;
+            sd_journal_send("PRIORITY=%i", LOG_NOTICE,
+                            "MESSAGE=received unexpected frame: %s", buf,
+                            "DUMP=%s", buf,
+                            NULL);
+            free(buf);
         }
         zframe_destroy (&frame);
     }while(more);
@@ -528,7 +672,7 @@ int control_handler (zmsg_t *command_msg, zframe_t *cid){
 
 /* control API functions */
 
-// returns a string with the help dialogue
+// returns a string with the help dialog
 void show_help(char *ret){
     const char *msg =
         "You are talking with %s \n"
@@ -536,18 +680,18 @@ void show_help(char *ret){
         "\n"
         "       help                    will show this\n"
         "\n"
-        "   Changing the logfilters:\n"
+        "   Changing the log filters:\n"
         "   You need to set the desired filters and commit them afterwards\n"
         "       filter_add [FIELD]      requires input of the form VARIABLE=value\n"
         "                               successively added filters are ORed together\n"
         "       filter_add_conjunction  adds an AND to the list of filters, allowing to AND together the filters\n"
         "       filter_flush            drops all currently set filters\n"
         "       filter_show             shows the currently set filters\n"
-        "       filter_commit           applies the currently set filters (all sources will only send coresponding messages)\n"
+        "       filter_commit           applies the currently set filters (all sources will only send corresponding messages)\n"
         "                               WARNING: this will set the same filter on EVERY source\n"
         "\n"
         "       set_exposed_port [PORT] requires a valid tcp port (default: tcp://127.0.0.1:5555)\n"
-        "       show_exposed_port       shows the port on which the sink listens for incomming logs\n"
+        "       show_exposed_port       shows the port on which the sink listens for incoming logs\n"
         "       show_sources            shows the connected sources (characterized as ZMQ connection-IDs)\n"
         "\n"
         "       set_log_directory [DIR] sets the directory in which the received logs will be stored\n"
@@ -574,7 +718,7 @@ int filter_add(const char *filter_addition, zframe_t **response){
         filter_suffix = "\"]]";
     }
     else{
-        fprintf(stderr, "%s\n", "erroneus filter inserted, abbort");
+        sd_journal_print(LOG_ERR, "%s\n", "erroneus filter inserted, abbort");
         return 0;
     }
     int length_addition = strlen(filter_addition)+strlen(filter_prefix)+strlen(filter_suffix);
@@ -676,19 +820,19 @@ int filter_commit(zframe_t **response){
         zmsg_send (&m, client);
     }
     free(query_string);
-    char *stringh = "filter commited\n";
+    char *stringh = "filter committed\n";
     *response = zframe_new(stringh,strlen(stringh));
     return 1;
 }
 
 /* changing the exposed port */
-int set_exposed_port(int port){
-    int ret = 0;
+int set_exposed_port(int port, zframe_t **response){
     // check for valid port
     if(port <= 1023 || 65536 <= port){
-        ret = -1;
-        fprintf(stderr, "%s\n", "Port not set, please choose a valid one ( >1023, <65536 )");
-        return ret;
+        sd_journal_print(LOG_NOTICE, "%s", "attempt to set port to an invalid option");
+        char *stringh = "port not set, please choose a valid one ( >1023, <65536 )\n";
+        *response = zframe_new(stringh,strlen(stringh));
+        return -1;
     }
 
     // actual change of the port
@@ -701,9 +845,12 @@ int set_exposed_port(int port){
     sprintf(client_socket_address, "tcp://127.0.0.1:%d", port);
     rc = zsocket_bind(client, client_socket_address);
     assert( rc );
-    sd_journal_print(LOG_INFO, "Changed exposed port to %s", client_socket_address);
+    sd_journal_print(LOG_INFO, "changed exposed port to %s", client_socket_address);
 
-    return ret;
+    char *stringh2 = "port changed\n";
+    *response = zframe_new(stringh2,strlen(stringh2));
+
+    return 0;
 }
 
 /* showing the exposed port */
@@ -713,7 +860,7 @@ int show_exposed_port(zframe_t **response){
 }
 
 /* changing the directory, in which the remote journals are stored*/
-int set_log_directory(char *new_directory){
+int set_log_directory(char *new_directory, zframe_t **response){
     int ret = 1;
 
     // create specified directory with rwxrw-rw-
@@ -724,21 +871,30 @@ int set_log_directory(char *new_directory){
                 // directory already exists, everything's fine
                 ret = 1;
                 break;
-            default:
+            default: {}
                 // some other error occured
-                fprintf(stderr, "Error while creating the directory, errno: %d \n", errno);
+                char *stringh = "error while creating the directory\n";
+                *response = zframe_new(stringh,strlen(stringh));
                 return -1;
         }
     }
     free(remote_journal_directory);
     remote_journal_directory = new_directory;
     // adjust filestreams
-    Logging_sources *i, *tmp;
+    Logging_source_t *i, *tmp;
     HASH_ITER(hh, logging_sources, i, tmp){
         pclose(i->sjr);
         i->sjr = create_log_filestream(i->src_machine_id);
+        //stream not open
+        if(i->sjr == NULL){
+            sd_journal_print(LOG_ERR, "opening of file stream for machine id %s failed", i->src_machine_id);
+            char *stringh = "error while opening the file stream\n";
+            *response = zframe_new(stringh,strlen(stringh));
+            return -2;
+        }
     }
-
+    char *stringh = "directory set\n";
+    *response = zframe_new(stringh,strlen(stringh));
     return ret;
 }
 
@@ -836,16 +992,14 @@ int execute_command(opcode command_id, json_t *command_arg, zframe_t **response)
             break;
         case SET_EXPOSED_PORT:
             port = get_arg_int(command_arg);
-            set_exposed_port(port);
-            *response = zframe_new(CTRL_ACCEPTED,strlen(CTRL_ACCEPTED));
+            set_exposed_port(port, response);
             break;
         case SHOW_EXPOSED_PORT:
             show_exposed_port(response);
             break;
         case SET_LOG_DIRECTORY:
             dir = get_arg_string(command_arg);
-            set_log_directory(dir);
-            *response = zframe_new(CTRL_ACCEPTED,strlen(CTRL_ACCEPTED));
+            set_log_directory(dir, response);
             break;
         case SHOW_LOG_DIRECTORY:
             show_log_directory(response);
@@ -881,23 +1035,18 @@ int main ( int argc, char *argv[] ){
 
     struct option longopts[] = {
         { "reverse",        no_argument,            &reverse,     1   },
-        { "at_most",        required_argument,      NULL,         'a' },
         { "since",          required_argument,      NULL,         'b' },
         { "until",          required_argument,      NULL,         'c' },
         { "since_cursor",   required_argument,      NULL,         'd' },
         { "until_cursor",   required_argument,      NULL,         'e' },
-        { "follow",         no_argument,            NULL,         'g' },
         { "help",           no_argument,            NULL,         'h' },
-        { "filter",         required_argument,      NULL,         'i' },
+        { "version",        no_argument,            NULL,         'v' },
         { 0, 0, 0, 0 }
     };
 
     int c;
-    while((c = getopt_long(argc, argv, "a:b:c:d:e:f:ghs:", longopts, NULL)) != -1) {
+    while((c = getopt_long(argc, argv, "b:c:d:e:hv", longopts, NULL)) != -1) {
         switch (c) {
-            case 'a':
-                at_most = atoi(optarg);
-                break;
             case 'b':
                 since_timestamp = optarg;
                 break;
@@ -914,14 +1063,15 @@ int main ( int argc, char *argv[] ){
                 fprintf(stdout,
 "journal-gateway-zmtp-sink -- receiving logs from journal-gateway-zmtp-source over the network\n\n"
 "Usage: journal-gateway-zmtp-sink   [--help] [--since] [--until]\n"
-"                                   [--since_cursor] [--until_cursor] [--at_most]\n"
-"                                   [--follow] [--reverse] [--filter]\n\n"
+"                                   [--since_cursor] [--until_cursor]\n"
+"                                   [--follow] [--reverse] [--filter]\n"
+"                                   [--version]\n"
+"\n"
 "   --help      will show this\n"
 "   --since \trequires a timestamp with a format like \"2014-10-01 18:00:00\"\n"
 "   --until \tsee --since\n"
 "   --since_cursor \trequires a log cursor, see e.g. 'journalctl -o export'\n"
 "   --until_cursor \tsee --since_cursor\n"
-"   --at_most \trequires a positive integer N, at most N logs will be sent\n"
 "\n"
 "The sink is used to wait for incomming messages from journal-gateway-zmtp-source via an exposed socket.\n"
 "Set this socket via the GATEWAY_LOG_PEER environment variable (must be usable by ZeroMQ).\n"
@@ -930,6 +1080,9 @@ int main ( int argc, char *argv[] ){
 "For further controls use the journal-gateway-zmtp-control tool\n"
 "\n"
                 );
+                return 0;
+            case 'v':
+                fprintf(stdout, "Journal-Gateway-ZMTP Version %d.%d.%d\n", VMAYOR, VMINOR, VPATCH);
                 return 0;
             case 0:     /* getopt_long() set a variable, just keep going */
                 break;
@@ -1009,6 +1162,8 @@ int main ( int argc, char *argv[] ){
 
     // /* for stopping the gateway via keystroke (ctrl-c) */
     s_catch_signals();
+    s_ignore_broken_pipe();
+
     /* receive controls or logs, initiate connections to new sources */
     while ( active ){
         rc=zmq_poll (items, 2, poll_wait_time);
@@ -1068,7 +1223,7 @@ int main ( int argc, char *argv[] ){
     zsocket_destroy (ctx, router_control);
     zctx_destroy (&ctx);
 
-    sd_journal_print(LOG_INFO, "...gateway stopped");
+    sd_journal_print(LOG_INFO, "...gateway sink stopped");
     return 0;
 }
 #endif
