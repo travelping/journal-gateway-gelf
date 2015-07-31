@@ -168,32 +168,60 @@ from the sink). If the match failed CTRL_UKCOM is returned.
                                                          (...) see below
 ```
 
-It follows a list of all valid commands and example arguments:
+It follows a list of all valid commands:
 
+* help
+    - will show a short version of this chapter
 
-command           | argument type | example argument    | explanation
-------------------|---------------|---------------------|------------
-reverse¹          | 0, 1          | 0                   | 0 (default) - output in normal direction, 1 - inverse direction
-at_most¹          | int           | 5                   | only this many messages will be sent
-since_timestamp   | timestamp     | 2014-10-01 18:00:00 | shows only logs since the specified timestamp
-until_timestamp¹  | timestamp     | 2014-10-01 18:00:00 | shows only logs until the specified timestamp
-since_cursor¹     | journalcursor | ²                   | shows only logs since the specified cursor
-until_cursor      | journalcursor | ²                   | shows only logs until the specified cursor
-follow            | 0, 1          | 1                   | 0 - doesn't follow the journal for new entries, 1 (default) - follows
-filter            | filter string | [["MESSAGE=a"]]     | the sources will only send entries matching the filter ³
-listen            | 0, 1          | 1                   | 0 - the sink will stop if the first source logs off, 1 (default) - the sink waits indefinitely for incomming connections
-set_exposed_port  | zmtp port     | 5556                | changes the port on which the sinks listens for incomming log messages
-set_log_directory | path          | /home/user/logtest  | changes the directory in which the messages are stored
-show_filter       | none          |                     | returns a string of the currently set filters
-show_sources      | none          |                     | returns a string of the currently logged on sources
-send_query        | none          |                     | the sink triggers all sources to send journals according to the set filters
-shutdown          | none          |                     | shuts down the sink
-help              | none          |                     | shows a short version of this table
-1: only usable if listen is deactivated
+* show_exposed_port
+    - will show the endpoint chosen in GATEWAY_LOG_PEER if not otherwise set
+    - this is the port on which the logs sent by the source are received
 
-2: s=a4b70ccdcd4a4fc5a52e168eea246e05;i=1;b=0e7e1cc42bdd4028835611b65f2adc
+* set_exposed_port <port>
+    - will set the endpoint
+    - Example: set_exposed_port tcp://127.0.0.1:5555
 
-3: requires input of the form e.g. [["FILTER_1", "FILTER_2"], ["FILTER_3"]] this example reprensents the boolean formula "(FILTER_1 OR FILTER_2) AND (FILTER_3) whereas the content of FILTER_N is matched against the contents of the logs
+* show_sources
+    - will show the zmq ids of each connection to journal-gateway-zmtp-sources
+
+* show_log_directory
+    - will show the directory in which the journal files are stored
+
+* set_log_directory <dir>
+    - will set the directory
+    - will create the directory if it doesn't exist at the time of the call
+    - Example: set_log_directory /var/log/example/
+
+* show_diskusage
+    - shows the used disc space of the directory in which the logs are stored
+    - the shown number is the number of used blocks
+
+* shutdown
+    - will stop the sink
+
+The following commands will change the applied filters.
+This is implemented in a set and commit manner, meaning that the changes you choose will only apply after you commit them.
+The filters have to be written in the same way ``journalctl`` expects the matches (FIELD=value).
+The filters are applied in the sources, changing the filters in the sink will lead to a broadcast of the new filters to all sources, changing the filters globally.
+
+* filter_add FIELD=value
+    - will add the matching FIELD=value to the filters
+    - successively added filters are ORed together
+    - Example: filter_add PRIORITY=4
+
+* filter_add_conjunction
+    - will add a logical AND to the list of filters
+
+* filter_flush
+    - will drop all currently set filters
+
+* filter_show
+    - will show the currently set filters
+    - will also show the currently active filters
+
+* filter_commit
+    - will apply the currently set filters
+    - WARNING: will set the same filter on **every** source
 
 
 ```
@@ -203,7 +231,7 @@ help              | none          |                     | shows a short version 
                      sink exposes a tcp port               |
                      (default tcp://*:27002)               |
                      which expects control signals         |      +----------------+
-                     that leads to calls of the API        +------+set_target_peer |
+                     that leads to calls of the API        +------+set_target_port |
                                                            |      +----------------+
                      (the most important are shown to      |
                       the right, further explanations      |      +-----------+
@@ -217,23 +245,30 @@ help              | none          |                     | shows a short version 
                                                            |
                                                          (...) see below
 ```
-command           | argument type | example argument    | explanation
-------------------|---------------|---------------------|------------
-reverse           | 0, 1          | 0                   | 0 (default) - output in normal direction, 1 - inverse direction
-at_most           | int           | 5                   | only this many messages will be sent
-since_timestamp   | timestamp     | 2014-10-01 18:00:00 | shows only logs since the specified timestamp
-until_timestamp   | timestamp     | 2014-10-01 18:00:00 | shows only logs until the specified timestamp
-since_cursor      | journalcursor | ¹                   | shows only logs since the specified cursor
-until_cursor      | journalcursor | ¹                   | shows only logs until the specified cursor
-follow            | 0, 1          | 1                   | 0 - doesn't follow the journal for new entries, 1 (default) - follows
-filter            | filter string | [["MESSAGE=a"]]     | the sources will only send entries matching the filter ³
-set_target_peer   | zmtp port     | 5556                | changes the port on which the sinks listens for incomming log messages
-show_filter       | none          |                     | returns a string of the currently set filters
-apply_filter      | none          |                     | the source is triggered to apply the set filters from now on (until call of this old filters will be applied)
-shutdown          | none          |                     | shuts down the source
-help              | none          |                     | shows a short version of this table
 
-1: s=a4b70ccdcd4a4fc5a52e168eea246e05;i=1;b=0e7e1cc42bdd4028835611b65f2adc
+
+This chapter contains short explanation for each command one can send to the journal-gateway-zmtp-source.
+
+* help
+    - will show a short version of this chapter
+
+* show_target_port
+    - will show the endpoint chosen in JOURNAL_REMOTE_TARGET if not otherwise set
+
+* set_target_port <port>
+    - will set the endpoint
+    - Example: set_target_port tcp://127.0.0.1:5555
+
+* show_log_directory
+    - will show the directory from which the logs are read
+
+* set_log_directory <dir>
+    - will set the directory from which the logs are read
+
+* shutdown
+    - will stop the source
+
+The handling of the filters in the source is the same as in the sink.
 
 Example
 -------
