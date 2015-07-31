@@ -1,7 +1,8 @@
 journal-gateway-zmtp
 ====================
 
-A ZeroMQ gateway for sending logs from systemd's journald over the network and a sink (both CLI tools).
+A ZeroMQ gateway for sending logs from systemd's journald over the network and a
+sink.
 
 Logs are stored in a journalfile, separated for each source.
 
@@ -9,51 +10,57 @@ Mode of Operation
 -----------------
 
 
-          +----------------+
-          |    journald    |
-          |                |
-          |                |
-          |                |
-          |                |
-          +-------+--------+
-          +-----+ | +-----+
-          |file | | |file |
-          +-----+ | +-----+
-                  | journal_api
-                  |
-                  |
-          +-------+--------+
-          |"gateway-source"|
-          |                |
-          |    acts as     |
-          |    journal     |
-          |    client      |
-          |                |
-          |                |                                         +--------------+
-          |                |                                         |   journald   |
-          |                |                                         |              |
-          |                |                                         |              |
-          |                |                                         |              |
-          |                | ZMTP    +------+    +---------------+   |              |
-          |                +---------+ ZMTP +----+"gateway-sink" +---+              |
-          |                |         +------+    |uses           |   |              |
-          |                |                     |systemd-journal|   |              |
-          |                |                     |-remote        |   |              |
-          +----------------+                     +---------------+   +-----+--+-----+
-                                                                     +-----+  +-----+
-                                                                     |file |  |file |
-                                                                     +-----+  +-----+
+  +----------------+
+  |    journald    |
+  |                |
+  |                |
+  |                |
+  |                |
+  +-------+--------+
+  +-----+ | +-----+
+  |file | | |file |
+  +-----+ | +-----+
+          | journal_api
+          |
+          |
+  +-------+--------+
+  |"gateway-source"|
+  |                |
+  |    acts as     |
+  |    journal     |
+  |    client      |
+  |                |
+  |                |                                         +--------------+
+  |                |                                         |   journald   |
+  |                |                                         |              |
+  |                |                                         |              |
+  |                |                                         |              |
+  |                | ZMTP    +------+    +---------------+   |              |
+  |                +---------+ ZMTP +----+"gateway-sink" +---+              |
+  |                |         +------+    |uses           |   |              |
+  |                |                     |systemd-journal|   |              |
+  |                |                     |-remote        |   |              |
+  +----------------+                     +---------------+   +-----+--+-----+
+                                                             +-----+  +-----+
+                                                             |file |  |file |
+                                                             +-----+  +-----+
 
 Installation
 ------------
 
-You will need [ZeroMQ](http://zeromq.org/intro:get-the-software) (recomended version: 3.2.5, you'll need >= 3), [czmq](https://github.com/zeromq/czmq#toc3-71)  (ZeroMQ C bindings), jansson and the systemd-headers (for the gateway only). The gateway and the client can be build seperately (thus you dont need systemd for the client). Using Fedora you can do:
+You will need [ZeroMQ](http://zeromq.org/intro:get-the-software) (recomended
+version: 3.2.5, you'll need >= 3),
+[czmq](https://github.com/zeromq/czmq#toc3-71)  (ZeroMQ C bindings), jansson
+and the systemd-headers (for the gateway only). The gateway and the client can
+be build seperately (thus you dont need systemd for the client). Using Fedora
+you can do:
 
 ```bash
 yum install jansson jansson-devel systemd-devel
 ```
 
-for jansson and systemd. To install ZMQ and CZMQ follow the instructions on the linked sites.
+for jansson and systemd. To install ZMQ and CZMQ follow the instructions on
+the linked sites.
 
 
 Then just execute (in the journal-gateway-zmtp directory):
@@ -63,25 +70,28 @@ make              # you can also just build the gateway or the client
                   # with 'make source' or 'make sink'
 ```
 
-To install the files into your system, you can call the install script in /sample
+To install the files into your system, you can call the install script in
+/sample
 
 Usage
 -----
 
 ### gateway-sink
 
-You should start the sink first.
-It binds to the specified socket and waits for an incomming connection from a gateway.
-If you want it to stay listening for more than one connection, you should start it with the --listen flag.
+You should start the sink first. It binds to the specified socket and waits for
+an incomming connection from a gateway. If you want it to stay listening for
+more than one connection, you should start it with the --listen flag.
 
 You can start the sink via:
 ```bash
 env JOURNAL_REMOTE_DIR=[some_path] GATEWAY_LOG_PEER=[some_peer] ~/dev/tobzmq/journal-gateway-zmtp-sink --listen
 ```
-You must specify a peer (in GATEWAY_LOG_PEER) on which the sink binds and expects sources to log on.
-You must also specify a directory (in JOURNAL_REMOTE_DIR) in which you want to save your remote journals.
-The journal file names are based on the IDs of the gateways.
-Every new gateway-sink connection will be logged in the journal:
+
+You must specify a peer (in GATEWAY_LOG_PEER) on which the sink binds and
+expects sources to log on. You must also specify a directory (in
+JOURNAL_REMOTE_DIR) in which you want to save your remote journals. The journal
+file names are based on the IDs of the gateways. Every new gateway-sink
+connection will be logged in the journal:
 
 ```bash
 Mär 02 09:58:42 virtual-fedora-sbs journal-gateway-zmtp-sink[9623]: gateway has a new source, ID: 006B8B4567
@@ -89,19 +99,24 @@ Mär 02 09:58:42 virtual-fedora-sbs journal-gateway-zmtp-sink[9623]: gateway has
 
 ### gateway-source
 
-Installing the gateway will also install a service file to execute the gateway as a systemd unit:
+Installing the gateway will also install a service file to execute the gateway
+as a systemd unit:
 
 ```bash
 systemctl start journal-gateway-zmtp-source    # connects by default to "tcp://127.0.0.1:5555"
 ```
 
-The service looks for a configuration file named "zmq_gateway_source.conf" in the directory "~/conf". You can change the socket there (this only has an effect, if you execute the gateway as a systemd unit).
+The service looks for a configuration file named "zmq_gateway_source.conf" in
+the directory "~/conf". You can change the socket there (this only has an
+effect, if you execute the gateway as a systemd unit).
 
 If you want to start the gateway without using systemd, you can type
 ```bash
 env JOURNAL_REMOTE_TARGET=[some_peer] JOURNAL_SOURCE_DIR=[some_path] ~/dev/tobzmq/journal-gateway-zmtp-source
 ```
-where JOURNAL_REMOTE_TARGET defines the exposed socket of the sink and JOURNAL_SOURCE_DIR the target socket for the logs.
+
+where JOURNAL_REMOTE_TARGET defines the exposed socket of the sink and
+JOURNAL_SOURCE_DIR the target socket for the logs.
 
 Use --help for an overview of all commands.
 
@@ -110,7 +125,17 @@ Configuration while Running
 
 ###Enhanced Control for the ZMTP-Journal-Gateway
 
-To enable configuration of both sink and source during runtime the following API and connection is implemented. Both parts of the gateway expose a port on which a tool can connect via ZeroMQ. The gateway offers the journal-gateway-zmtp-control which is a simple one line input tool. Both expect a json encoded string which contains a json_object (a dictionary of key-value pairs) with only one pair. The key contains the command and the value contains the arguments if any. The sink/source then checks if the command matches one of the valid commands. The source of the control command then receives a message: If succesfully matched the command gets executed and CTRL_ACCEPTED or the requested information is returned (for example a list of all connected logging sources is returned from the sink). If the match failed CTRL_UKCOM is returned.
+To enable configuration of both sink and source during runtime the following API
+and connection is implemented. Both parts of the gateway expose a port on which
+a tool can connect via ZeroMQ. The gateway offers the journal-gateway-zmtp-
+control which is a simple one line input tool. Both expect a json encoded string
+which contains a json_object (a dictionary of key-value pairs) with only one
+pair. The key contains the command and the value contains the arguments if any.
+The sink/source then checks if the command matches one of the valid commands.
+The source of the control command then receives a message: If succesfully
+matched the command gets executed and CTRL_ACCEPTED or the requested information
+is returned (for example a list of all connected logging sources is returned
+from the sink). If the match failed CTRL_UKCOM is returned.
 
 
 ```
