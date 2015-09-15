@@ -9,7 +9,7 @@ Logs are stored in a journalfile, separated for each source.
 Mode of Operation
 -----------------
 
-
+```
   +----------------+
   |    journald    |
   |                |
@@ -44,7 +44,7 @@ Mode of Operation
                                                              +-----+  +-----+
                                                              |file |  |file |
                                                              +-----+  +-----+
-
+```
 Installation
 ------------
 
