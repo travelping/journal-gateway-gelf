@@ -1,6 +1,5 @@
-#include "czmq.h"
-#include "zmq.h"
 #include "jansson.h"
+#include <curl/curl.h>
 #include <getopt.h>
 
 /* definitions for internal communication between gateway and client */
@@ -20,4 +19,8 @@
 
 #define VMAYOR 1
 #define VMINOR 0
-#define VPATCH 2
+#define VPATCH 0
+
+typedef int bool;
+#define true 1
+#define false 0
