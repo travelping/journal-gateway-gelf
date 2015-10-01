@@ -2,46 +2,39 @@ BASE_DIR = .
 SRC_DIR = $(BASE_DIR)/src
 TEST_DIR = $(BASE_DIR)/test
 MISC_DIR = $(BASE_DIR)/misc
+SAMPLE_DIR= $(BASE_DIR)/sample
 
-# CC = gcc
-CFLAGS = -c -O2 -Wall # -ggdb -Wextra
-LDFLAGS = -lzmq -lczmq -ljansson
+CC = gcc
+CFLAGS = -c -O0 -Wall -ggdb -Wextra
+LDFLAGS = $(shell curl-config --libs) -ljansson
 
 SYSTEMD_LDFLAGS = -lsystemd
 
-default: journal-gateway-zmtp-source journal-gateway-zmtp-sink journal-gateway-zmtp-control
+default: journal-gateway-gelf-source
 
-source: journal-gateway-zmtp-source
-sink: journal-gateway-zmtp-sink
-control: journal-gateway-zmtp-control
-test: unit_test_sink
+source: journal-gateway-gelf-source
 
-journal-gateway-zmtp-source: journal-gateway-zmtp-source.o
-	$(CC) journal-gateway-zmtp-source.o $(LDFLAGS) $(SYSTEMD_LDFLAGS) -o journal-gateway-zmtp-source
+sample-gelf: json-gelf-packaging
 
-journal-gateway-zmtp-source.o: $(SRC_DIR)/journal-gateway-zmtp-source.c
-	$(CC) $(CFLAGS) $(SRC_DIR)/journal-gateway-zmtp-source.c -o journal-gateway-zmtp-source.o
+sample-curl: curl-try-sending
 
-journal-gateway-zmtp-sink: journal-gateway-zmtp-sink.o
-	$(CC) journal-gateway-zmtp-sink.o $(LDFLAGS) $(SYSTEMD_LDFLAGS) -o journal-gateway-zmtp-sink
+journal-gateway-gelf-source: journal-gateway-gelf-source.o
+	$(CC) journal-gateway-gelf-source.o $(LDFLAGS) $(SYSTEMD_LDFLAGS) -o journal-gateway-gelf-source
 
-journal-gateway-zmtp-sink.o: $(SRC_DIR)/journal-gateway-zmtp-sink.c
-	$(CC) $(CFLAGS) $(SRC_DIR)/journal-gateway-zmtp-sink.c -o journal-gateway-zmtp-sink.o
+journal-gateway-gelf-source.o: $(SRC_DIR)/journal-gateway-gelf-source.c
+	$(CC) $(CFLAGS) $(SRC_DIR)/journal-gateway-gelf-source.c -o journal-gateway-gelf-source.o
 
-journal-gateway-zmtp-control: journal-gateway-zmtp-control.o
-	$(CC) journal-gateway-zmtp-control.o $(LDFLAGS) -o journal-gateway-zmtp-control
+json-gelf-packaging: json-gelf-packaging.o
+	$(CC) json-gelf-packaging.o -ljansson $(SYSTEMD_LDFLAGS) -o json-gelf-packaging
 
-journal-gateway-zmtp-control.o:$(SRC_DIR)/journal-gateway-zmtp-control.c
-	$(CC) $(CFLAGS) $(SRC_DIR)/journal-gateway-zmtp-control.c -o journal-gateway-zmtp-control.o
+json-gelf-packaging.o: $(SAMPLE_DIR)/json-gelf-packaging.c
+	$(CC) $(CFLAGS) $(SAMPLE_DIR)/json-gelf-packaging.c -o json-gelf-packaging.o
 
-unit_test_sink: unit_test_sink.o
-	$(CC) unit_test_sink.o $(LDFLAGS) $(SYSTEMD_LDFLAGS)  -o unit_test_sink
+curl-try-sending: curl-try-sending.o
+	$(CC) curl-try-sending.o $(shell curl-config --libs) -o curl-try-sending
 
-unit_test_sink.o:$(TEST_DIR)/unit_test_sink.c
-	$(CC) $(CFLAGS) -I/test $(TEST_DIR)/unit_test_sink.c -o unit_test_sink.o
-
-
+curl-try-sending.o: $(SAMPLE_DIR)/curl-try-sending.c
+	$(CC) $(CFLAGS) $(shell curl-config --cflags) $(SAMPLE_DIR)/curl-try-sending.c -o curl-try-sending.o
 
 clean:
-	rm -f *.o journal-gateway-zmtp-source journal-gateway-zmtp-sink journal-gateway-zmtp-control
-
+	rm -f *.o journal-gateway-gelf-source json-gelf-packaging curl-try-sending

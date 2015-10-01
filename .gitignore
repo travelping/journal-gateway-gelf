@@ -1,4 +1,5 @@
 *.o
-journal-gateway-zmtp-source
-journal-gateway-zmtp-sink
+journal-gateway-gelf-source
+curl-try-sending
+json-gelf-packaging
 *.tags*
