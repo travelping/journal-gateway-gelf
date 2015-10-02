@@ -4,7 +4,7 @@ TEST_DIR = $(BASE_DIR)/test
 MISC_DIR = $(BASE_DIR)/misc
 SAMPLE_DIR= $(BASE_DIR)/sample
 
-CC = gcc
+# CC = gcc
 CFLAGS = -c -O0 -Wall -ggdb -Wextra
 LDFLAGS = $(shell curl-config --libs) -ljansson
 
