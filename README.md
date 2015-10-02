@@ -40,8 +40,8 @@ Mode of Operation
   |                |                                         |              |
   +----------------+                                         +-----+--+-----+
 ```
-Installation
-------------
+Build
+-----
 
 You will need jansson, libcurl and the systemd-headers.
 
@@ -79,6 +79,18 @@ where JOURNAL_REMOTE_TARGET defines the input of the graylog server and
 JOURNAL_SOURCE_DIR the source folder for the logs.
 
 Use --help for an overview of all commands.
+
+## Configuration
+
+You can change two parameters in /etc/journal-gateway-gelf-source.conf:
+
+```
+JOURNAL_REMOTE_TARGET="http://127.0.0.1:12345/gelf"
+JOURNAL_SOURCE_DIR="/var/log/journal/"
+```
+
+which changes the target and the source folder of the logs.
+Mind the format of the target if you want to send messages to a graylog server.
 
 Example
 -------

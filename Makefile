@@ -14,7 +14,7 @@ default: journal-gateway-gelf-source
 
 source: journal-gateway-gelf-source
 
-sample-gelf: json-gelf-packaging
+sample-gelf: json-gelf-encoding
 
 sample-curl: curl-try-sending
 
@@ -24,11 +24,11 @@ journal-gateway-gelf-source: journal-gateway-gelf-source.o
 journal-gateway-gelf-source.o: $(SRC_DIR)/journal-gateway-gelf-source.c
 	$(CC) $(CFLAGS) $(SRC_DIR)/journal-gateway-gelf-source.c -o journal-gateway-gelf-source.o
 
-json-gelf-packaging: json-gelf-packaging.o
-	$(CC) json-gelf-packaging.o -ljansson $(SYSTEMD_LDFLAGS) -o json-gelf-packaging
+json-gelf-encoding: json-gelf-encoding.o
+	$(CC) json-gelf-encoding.o -ljansson $(SYSTEMD_LDFLAGS) -o json-gelf-encoding
 
-json-gelf-packaging.o: $(SAMPLE_DIR)/json-gelf-packaging.c
-	$(CC) $(CFLAGS) $(SAMPLE_DIR)/json-gelf-packaging.c -o json-gelf-packaging.o
+json-gelf-encoding.o: $(SAMPLE_DIR)/json-gelf-encoding.c
+	$(CC) $(CFLAGS) $(SAMPLE_DIR)/json-gelf-encoding.c -o json-gelf-encoding.o
 
 curl-try-sending: curl-try-sending.o
 	$(CC) curl-try-sending.o $(shell curl-config --libs) -o curl-try-sending
@@ -37,4 +37,4 @@ curl-try-sending.o: $(SAMPLE_DIR)/curl-try-sending.c
 	$(CC) $(CFLAGS) $(shell curl-config --cflags) $(SAMPLE_DIR)/curl-try-sending.c -o curl-try-sending.o
 
 clean:
-	rm -f *.o journal-gateway-gelf-source json-gelf-packaging curl-try-sending
+	rm -f *.o journal-gateway-gelf-source json-gelf-encoding curl-try-sending
