@@ -5,7 +5,7 @@ Description=GELF logging gateway for Journald.
 EnvironmentFile=/etc/journal-gateway-gelf.conf
 ExecStart=/usr/bin/journal-gateway-gelf
 ExecStop=/bin/kill -s SIGTERM $MAINPID
-Restart=on-failure
+Restart=always
 
 [Install]
 WantedBy=multi-user.target
