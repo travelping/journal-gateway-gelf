@@ -159,13 +159,9 @@ uint64_t get_arg_date(json_t *json_args, char *key){
 }
 
 //TODO: introduce https support (ssl handshake etc.)
-int send_to_http (const char *payload, const char *target){
+int send_to_http (CURL *curl, const char *payload, const char *target){
 
-    CURL *curl;
     CURLcode rc;
-
-    curl = curl_easy_init();
-    assert(curl);
 
     if(curl) {
         /* First set the URL that is about to receive our POST. This URL can
@@ -189,8 +185,9 @@ int send_to_http (const char *payload, const char *target){
             sleep(5);
         }
     /* always cleanup */
-    curl_easy_cleanup(curl);
+
     }
+    else rc = -1;
     return rc;
 }
 
@@ -385,6 +382,11 @@ static void *handler_routine () {
     /* In windows, this will init the winsock stuff */
     curl_global_init(CURL_GLOBAL_ALL);
 
+    /* Setup curl handle as input for the libcurl interface */
+    CURL *curl;
+    curl = curl_easy_init();
+    assert(curl);
+
     int rc;
 
     while (active) {
@@ -410,7 +412,7 @@ static void *handler_routine () {
         if( rc == 1 ){
             char *json_entry_string;
             get_entry_string( &json_entry_string ); // json_entry_string has to be free'd
-            send_to_http(json_entry_string, gateway_socket_address);
+            send_to_http(curl, json_entry_string, gateway_socket_address);
             free(json_entry_string);
         }
         /* end of journal ? => wait indefinitely */
@@ -435,6 +437,7 @@ static void *handler_routine () {
         nanosleep(&tim1 , &tim2);
     }
     // cleanup
+    curl_easy_cleanup(curl);
     curl_global_cleanup();
 
     sd_journal_print(LOG_DEBUG, "reading from journal finished");
@@ -445,7 +448,6 @@ static void *handler_routine () {
 
 int main (int argc, char *argv[]){
 
-    int rc;
     struct option longopts[] = {
         { "help",       no_argument,            NULL,         'h' },
         { "version",    no_argument,            NULL,         'v' },
