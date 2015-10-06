@@ -26,7 +26,7 @@
 
 #define VMAYOR 1
 #define VMINOR 0
-#define VPATCH 0
+#define VPATCH 2
 
 typedef int bool;
 #define true 1
