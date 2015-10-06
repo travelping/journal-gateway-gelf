@@ -1,5 +1,5 @@
 #!/bin/bash
 
-cp -f journal-gateway-gelf-source /usr/bin/
-cp -f ./misc/journal-gateway-gelf-s*.service /etc/systemd/system/
-cp -f ./misc/journal-gateway-gelf-s*.conf /etc
+cp -f journal-gateway-gelf /usr/bin/
+cp -f ./misc/journal-gateway-gelf.service /etc/systemd/system/
+cp -f ./misc/journal-gateway-gelf.conf /etc

@@ -31,8 +31,8 @@
 #include <signal.h>
 #include <stdint.h>
 #include <errno.h>
+#include <unistd.h>
 #include "journal-gateway-gelf.h"
-#include "journal-gateway-gelf-source.h"
 
 #define _GNU_SOURCE
 #define KEYDATA(KEY) .key=KEY, .keylen=sizeof(KEY)
@@ -51,7 +51,7 @@ uint64_t until_timestamp;
 /* signal handler function, can be used to interrupt the gateway via keystroke */
 void stop_gateway(int dummy) {
     UNUSED(dummy);
-    sd_journal_print(LOG_INFO, "stopping the gateway source...");
+    sd_journal_print(LOG_INFO, "stopping the gateway...");
     active = false; // stop the gateway
 }
 
@@ -159,15 +159,10 @@ uint64_t get_arg_date(json_t *json_args, char *key){
 }
 
 //TODO: introduce https support (ssl handshake etc.)
-int send_to_http (const char *payload, const char *target){
+int send_to_http (CURL *curl, const char *payload, const char *target){
 
-    CURL *curl;
     CURLcode rc;
 
-    /* In windows, this will init the winsock stuff */
-    curl_global_init(CURL_GLOBAL_ALL);
-
-    curl = curl_easy_init();
     if(curl) {
         /* First set the URL that is about to receive our POST. This URL can
            just as well be a https:// URL if that is what should receive the
@@ -183,12 +178,17 @@ int send_to_http (const char *payload, const char *target){
         if(rc != CURLE_OK){
             sd_journal_print(LOG_ERR, "curl_easy_perform() failed: %s\n",
                 curl_easy_strerror(rc));
+            /*
+            wait for a short time to not create a feedback loop with journal entries
+            we're not able to send
+            */
+            sleep(5);
         }
     /* always cleanup */
-    curl_easy_cleanup(curl);
+
     }
-    curl_global_cleanup();
-    return 0;
+    else rc = -1;
+    return rc;
 }
 
 int check_timestamps(){
@@ -379,6 +379,14 @@ static void *handler_routine () {
     /* create and adjust the journal pointer according to the information in args */
     adjust_journal();
 
+    /* In windows, this will init the winsock stuff */
+    curl_global_init(CURL_GLOBAL_ALL);
+
+    /* Setup curl handle as input for the libcurl interface */
+    CURL *curl;
+    curl = curl_easy_init();
+    assert(curl);
+
     int rc;
 
     while (active) {
@@ -404,7 +412,7 @@ static void *handler_routine () {
         if( rc == 1 ){
             char *json_entry_string;
             get_entry_string( &json_entry_string ); // json_entry_string has to be free'd
-            send_to_http(json_entry_string, gateway_socket_address);
+            send_to_http(curl, json_entry_string, gateway_socket_address);
             free(json_entry_string);
         }
         /* end of journal ? => wait indefinitely */
@@ -428,6 +436,9 @@ static void *handler_routine () {
         /* debugging or throtteling */
         nanosleep(&tim1 , &tim2);
     }
+    // cleanup
+    curl_easy_cleanup(curl);
+    curl_global_cleanup();
 
     sd_journal_print(LOG_DEBUG, "reading from journal finished");
     sd_journal_close( j );
@@ -448,15 +459,15 @@ int main (int argc, char *argv[]){
         switch (c) {
             case 'h':
                 fprintf(stdout,
-"journal-gateway-zmtp-source -- sending logs from systemd's journal over the network\n\
-Usage: journal-gateway-zmtp-source [--help]\n\n\
+"journal-gateway-gelf -- sending logs from systemd's journal over the network\n\
+Usage: journal-gateway-gelf [--help]\n\n\
 \t--help \t\twill show this\n\n\
-To set a socket to connect to a gateway sink set the JOURNAL_REMOTE_TARGET (must be usable by ZeroMQ)\n\
-The journal-gateway-zmtp-sink has to expose the given socket.\n\n"
+To set a socket to connect to a graylog2 server set the JOURNAL_GELF_REMOTE_TARGET\n\
+\n"
                 );
                 return 0;
             case 'v':
-                fprintf(stdout, "Journal-Gateway-ZMTP Version %d.%d.%d\n", VMAYOR, VMINOR, VPATCH);
+                fprintf(stdout, "Journal-Gateway-GELF Version %d.%d.%d\n", VMAYOR, VMINOR, VPATCH);
                 return 0;
             case 0:     /* getopt_long() set a variable, just keep going */
                 break;
@@ -478,6 +489,10 @@ The journal-gateway-zmtp-sink has to expose the given socket.\n\n"
         fprintf(stderr, "%s not specified.\n", ENV_LOG_TARGET_SOCKET);
         exit(1);
     }
+    if (strncmp("http://", gateway_socket_address, 7)) {
+        sd_journal_print(LOG_ERR, "unsupported URL-scheme for %s configured", ENV_LOG_TARGET_SOCKET);
+        exit(1);
+    }
     since_timestamp = strtol_nullok(getenv(ENV_SINCE_TIMESTAMP));
     until_timestamp = strtol_nullok(getenv(ENV_UNTIL_TIMESTAMP));
 
@@ -495,6 +510,10 @@ The journal-gateway-zmtp-sink has to expose the given socket.\n\n"
     s_catch_signals();
 
     handler_routine();
+    //cleanup
+    free(source_journal_directory);
+    free(gateway_socket_address);
+    free(filter);
 
     sd_journal_print(LOG_INFO, "...gateway stopped");
     return 0;
