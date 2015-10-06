@@ -31,6 +31,7 @@
 #include <signal.h>
 #include <stdint.h>
 #include <errno.h>
+#include <unistd.h>
 #include "journal-gateway-gelf.h"
 #include "journal-gateway-gelf-source.h"
 
@@ -164,10 +165,9 @@ int send_to_http (const char *payload, const char *target){
     CURL *curl;
     CURLcode rc;
 
-    /* In windows, this will init the winsock stuff */
-    curl_global_init(CURL_GLOBAL_ALL);
-
     curl = curl_easy_init();
+    assert(curl);
+
     if(curl) {
         /* First set the URL that is about to receive our POST. This URL can
            just as well be a https:// URL if that is what should receive the
@@ -183,12 +183,16 @@ int send_to_http (const char *payload, const char *target){
         if(rc != CURLE_OK){
             sd_journal_print(LOG_ERR, "curl_easy_perform() failed: %s\n",
                 curl_easy_strerror(rc));
+            /*
+            wait for a short time to not create a feedback loop with journal entries
+            we're not able to send
+            */
+            sleep(5);
         }
     /* always cleanup */
     curl_easy_cleanup(curl);
     }
-    curl_global_cleanup();
-    return 0;
+    return rc;
 }
 
 int check_timestamps(){
@@ -379,6 +383,9 @@ static void *handler_routine () {
     /* create and adjust the journal pointer according to the information in args */
     adjust_journal();
 
+    /* In windows, this will init the winsock stuff */
+    curl_global_init(CURL_GLOBAL_ALL);
+
     int rc;
 
     while (active) {
@@ -428,6 +435,8 @@ static void *handler_routine () {
         /* debugging or throtteling */
         nanosleep(&tim1 , &tim2);
     }
+    // cleanup
+    curl_global_cleanup();
 
     sd_journal_print(LOG_DEBUG, "reading from journal finished");
     sd_journal_close( j );
@@ -437,6 +446,7 @@ static void *handler_routine () {
 
 int main (int argc, char *argv[]){
 
+    int rc;
     struct option longopts[] = {
         { "help",       no_argument,            NULL,         'h' },
         { "version",    no_argument,            NULL,         'v' },
@@ -478,6 +488,10 @@ The journal-gateway-zmtp-sink has to expose the given socket.\n\n"
         fprintf(stderr, "%s not specified.\n", ENV_LOG_TARGET_SOCKET);
         exit(1);
     }
+    if (strncmp("http://", gateway_socket_address, 7)) {
+        sd_journal_print(LOG_ERR, "unsupported URL-scheme for %s configured", ENV_LOG_TARGET_SOCKET);
+        exit(1);
+    }
     since_timestamp = strtol_nullok(getenv(ENV_SINCE_TIMESTAMP));
     until_timestamp = strtol_nullok(getenv(ENV_UNTIL_TIMESTAMP));
 
@@ -495,6 +509,10 @@ The journal-gateway-zmtp-sink has to expose the given socket.\n\n"
     s_catch_signals();
 
     handler_routine();
+    //cleanup
+    free(source_journal_directory);
+    free(gateway_socket_address);
+    free(filter);
 
     sd_journal_print(LOG_INFO, "...gateway stopped");
     return 0;
