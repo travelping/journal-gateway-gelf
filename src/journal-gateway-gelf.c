@@ -33,7 +33,6 @@
 #include <errno.h>
 #include <unistd.h>
 #include "journal-gateway-gelf.h"
-#include "journal-gateway-gelf-source.h"
 
 #define _GNU_SOURCE
 #define KEYDATA(KEY) .key=KEY, .keylen=sizeof(KEY)
@@ -52,7 +51,7 @@ uint64_t until_timestamp;
 /* signal handler function, can be used to interrupt the gateway via keystroke */
 void stop_gateway(int dummy) {
     UNUSED(dummy);
-    sd_journal_print(LOG_INFO, "stopping the gateway source...");
+    sd_journal_print(LOG_INFO, "stopping the gateway...");
     active = false; // stop the gateway
 }
 
@@ -458,15 +457,15 @@ int main (int argc, char *argv[]){
         switch (c) {
             case 'h':
                 fprintf(stdout,
-"journal-gateway-zmtp-source -- sending logs from systemd's journal over the network\n\
-Usage: journal-gateway-zmtp-source [--help]\n\n\
+"journal-gateway-gelf -- sending logs from systemd's journal over the network\n\
+Usage: journal-gateway-gelf [--help]\n\n\
 \t--help \t\twill show this\n\n\
-To set a socket to connect to a gateway sink set the JOURNAL_REMOTE_TARGET (must be usable by ZeroMQ)\n\
-The journal-gateway-zmtp-sink has to expose the given socket.\n\n"
+To set a socket to connect to a graylog2 server set the JOURNAL_GELF_REMOTE_TARGET\n\
+\n"
                 );
                 return 0;
             case 'v':
-                fprintf(stdout, "Journal-Gateway-ZMTP Version %d.%d.%d\n", VMAYOR, VMINOR, VPATCH);
+                fprintf(stdout, "Journal-Gateway-GELF Version %d.%d.%d\n", VMAYOR, VMINOR, VPATCH);
                 return 0;
             case 0:     /* getopt_long() set a variable, just keep going */
                 break;

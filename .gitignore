@@ -1,5 +1,5 @@
 *.o
-journal-gateway-gelf-source
+journal-gateway-gelf
 curl-try-sending
 json-gelf-packaging
 *.tags*

@@ -22,7 +22,7 @@ Mode of Operation
           |
           |
   +-------+--------+
-  |"gateway-source"|
+  |   "gateway"    |
   |                |
   |    acts as     |
   |    journal     |
@@ -57,36 +57,36 @@ To install the files into your system, you can call the install script in
 Usage
 -----
 
-### gateway-source
+### gateway
 
 Installing the gateway will also install a service file to execute the gateway
 as a systemd unit:
 
 ```bash
-systemctl start journal-gateway-gelf-source
+systemctl start journal-gateway-gelf
 ```
 
-The service looks for a configuration file named  "journal-gateway-gelf-
-source.conf" in the etc directory. You can change the socket there (this
-only has an effect, if you execute the gateway as a systemd unit).
+The service looks for a configuration file named  "journal-gateway-gelf.conf"
+in the etc directory. You can change the socket there (this only has an
+effect, if you execute the gateway as a systemd unit).
 
 If you want to start the gateway without using systemd, you can type
 ```bash
-JOURNAL_REMOTE_TARGET=[some_peer] JOURNAL_SOURCE_DIR=[some_path] ./journal-gateway-gelf-source
+JOURNAL_GELF_REMOTE_TARGET=[some_peer] JOURNAL_GELF_SOURCE_DIR=[some_path] ./journal-gateway-gelf
 ```
 
-where JOURNAL_REMOTE_TARGET defines the input of the graylog server and
-JOURNAL_SOURCE_DIR the source folder for the logs.
+where JOURNAL_GELF_REMOTE_TARGET defines the input of the graylog server and
+JOURNAL_GELF_SOURCE_DIR the source folder for the logs.
 
 Use --help for an overview of all commands.
 
 ## Configuration
 
-You can change two parameters in /etc/journal-gateway-gelf-source.conf:
+You can change two parameters in /etc/journal-gateway-gelf.conf:
 
 ```
-JOURNAL_REMOTE_TARGET="http://127.0.0.1:12345/gelf"
-JOURNAL_SOURCE_DIR="/var/log/journal/"
+JOURNAL_GELF_REMOTE_TARGET="http://127.0.0.1:12345/gelf"
+JOURNAL_GELF_SOURCE_DIR="/var/log/journal/"
 ```
 
 which changes the target and the source folder of the logs.
@@ -95,10 +95,10 @@ Mind the format of the target if you want to send messages to a graylog server.
 Example
 -------
 
-Start the source:
+Start the gateway:
 
 ```bash
-env JOURNAL_REMOTE_TARGET=tcp://127.0.0.1:1234 JOURNAL_SOURCE_DIR=/var/log/journal ./journal-gateway-zmtp-source
+env JOURNAL_GELF_REMOTE_TARGET=tcp://127.0.0.1:1234 JOURNAL_GELF_SOURCE_DIR=/var/log/journal ./journal-gateway-gelf
 ```
 
 This will send every new message in your journal to the graylog server.
