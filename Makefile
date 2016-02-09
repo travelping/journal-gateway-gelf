@@ -5,7 +5,7 @@ MISC_DIR = $(BASE_DIR)/misc
 SAMPLE_DIR= $(BASE_DIR)/sample
 
 # CC = gcc
-CFLAGS = -c -O0 -Wall -ggdb -Wextra
+CFLAGS = -c -O0 -Wall -ggdb -Wextra -D_XOPEN_SOURCE=500
 LDFLAGS = $(shell curl-config --libs) -ljansson
 
 SYSTEMD_LDFLAGS = -lsystemd
