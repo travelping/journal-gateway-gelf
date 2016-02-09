@@ -26,7 +26,6 @@
 #include <systemd/sd-journal.h>
 #include <systemd/sd-id128.h>
 #include <inttypes.h>
-#define __USE_GNU 1
 #include <time.h>
 #include <signal.h>
 #include <stdint.h>
@@ -106,22 +105,17 @@ long int strtol_nullok(const char* inp){
 
 // json helper
 
-uint64_t get_timestamp_from_jstring(json_t *inp){
+int64_t get_timestamp_from_jstring(const json_t *inp){
     const char *string = json_string_value(inp);
-    char string_cpy[strlen(string)+1];
-    strcpy(string_cpy, string);
     /* decode the json date to unix epoch time, milliseconds are not considered */
     struct tm tm;
     time_t t;
-    char *ptr = strtok(string_cpy, "T.");
-    strptime_l(ptr, "%Y-%m-%d", &tm, 0);
-    ptr = strtok(NULL, "T.");
-    strptime_l(ptr, "%H:%M:%S", &tm, 0);
+    strptime(string, "%Y-%m-%dT%H:%M:%S", &tm);
     tm.tm_isdst = -1;
 
     t = mktime(&tm) * 1000000;      // this time needs to be adjusted by 1.000.000 to fit the journal time
 
-    return (uint64_t) t;
+    return (int64_t) t; // int64 is still big enough (by 4 levels of magnitude)
 }
 
 bool get_arg_bool(json_t *json_args, char *key){
@@ -146,16 +140,15 @@ int get_arg_int(json_t *json_args, char *key){
         return -1;
 }
 
-uint64_t get_arg_date(json_t *json_args, char *key){
+int64_t get_arg_date(json_t *json_args, char *key){
     /* follows the human readable form "2012-04-23T18:25:43.511Z" */
     json_t *json_date = json_object_get(json_args, key);
     if( json_date != NULL ){
-        return get_timestamp_from_jstring(json_date);
+        int64_t r = get_timestamp_from_jstring(json_date);
+        json_decref(json_date);
+        return r;
     }
-    else{
-        return -1;
-    }
-    json_decref(json_date);
+    return -1;
 }
 
 //TODO: introduce https support (ssl handshake etc.)
