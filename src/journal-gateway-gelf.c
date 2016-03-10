@@ -152,7 +152,7 @@ int64_t get_arg_date(json_t *json_args, char *key){
 }
 
 //TODO: introduce https support (ssl handshake etc.)
-int send_to_http (CURL *curl, const char *payload, const char *target){
+int send_to_http (CURL *curl, const char *payload) {
 
     CURLcode rc;
 
@@ -160,11 +160,8 @@ int send_to_http (CURL *curl, const char *payload, const char *target){
         /* First set the URL that is about to receive our POST. This URL can
            just as well be a https:// URL if that is what should receive the
         data. */
-        curl_easy_setopt(curl, CURLOPT_URL, target);
         curl_easy_setopt(curl, CURLOPT_POST, CURLOPT_POSTFIELDS);
         curl_easy_setopt(curl, CURLOPT_POSTFIELDS, payload);
-        curl_easy_setopt(curl, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_1_0);
-        curl_easy_setopt(curl, CURLOPT_USERAGENT, "journal-gateway-gelf/1.0");
         rc = curl_easy_perform(curl);
 
         /* Check for errors */
@@ -380,6 +377,10 @@ static void *handler_routine () {
     curl = curl_easy_init();
     assert(curl);
 
+    curl_easy_setopt(curl, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_1_0);
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, "journal-gateway-gelf/1.0");
+    curl_easy_setopt(curl, CURLOPT_URL, gateway_socket_address);
+
     int rc;
 
     while (active) {
@@ -405,7 +406,7 @@ static void *handler_routine () {
         if( rc == 1 ){
             char *json_entry_string;
             get_entry_string( &json_entry_string ); // json_entry_string has to be free'd
-            send_to_http(curl, json_entry_string, gateway_socket_address);
+            send_to_http(curl, json_entry_string);
             free(json_entry_string);
         }
         /* end of journal ? => wait indefinitely */
@@ -489,9 +490,6 @@ To set a socket to connect to a graylog2 server set the JOURNAL_GELF_REMOTE_TARG
     since_timestamp = strtol_nullok(getenv(ENV_SINCE_TIMESTAMP));
     until_timestamp = strtol_nullok(getenv(ENV_UNTIL_TIMESTAMP));
 
-    /* initialize filter */
-    filter = strdup("[[]]");
-
     json_t *json_helper = json_object();
     json_t *json_filter = json_loads("[[]]", JSON_REJECT_DUPLICATES, NULL);
     json_object_set(json_helper, "helper", json_filter);
@@ -506,7 +504,6 @@ To set a socket to connect to a graylog2 server set the JOURNAL_GELF_REMOTE_TARG
     //cleanup
     free(source_journal_directory);
     free(gateway_socket_address);
-    free(filter);
 
     sd_journal_print(LOG_INFO, "...gateway stopped");
     return 0;
