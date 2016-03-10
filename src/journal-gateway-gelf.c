@@ -344,6 +344,7 @@ int *get_entry_string(char** json_entry_string){
     }
 
     *json_entry_string = json_dumps(message, JSON_ENSURE_ASCII);
+    json_decref(message);
     return 0;
 }
 
@@ -492,7 +493,7 @@ To set a socket to connect to a graylog2 server set the JOURNAL_GELF_REMOTE_TARG
 
     json_t *json_helper = json_object();
     json_t *json_filter = json_loads("[[]]", JSON_REJECT_DUPLICATES, NULL);
-    json_object_set(json_helper, "helper", json_filter);
+    json_object_set_new(json_helper, "helper", json_filter);
     json_decref(json_helper);
 
     sd_journal_print(LOG_INFO, "gateway started...");
