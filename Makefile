@@ -38,3 +38,7 @@ curl-try-sending.o: $(SAMPLE_DIR)/curl-try-sending.c
 
 clean:
 	rm -f *.o journal-gateway-gelf json-gelf-encoding curl-try-sending
+install:
+	install -m 0755 journal-gateway-gelf $(prefix)/bin
+	install -m 0644 ./misc/journal-gateway-gelf.service $(prefix)/etc/systemd/system/
+	install -m 0644 ./misc/journal-gateway-gelf.conf $(prefix)/etc
