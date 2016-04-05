@@ -3,6 +3,7 @@ SRC_DIR = $(BASE_DIR)/src
 TEST_DIR = $(BASE_DIR)/test
 MISC_DIR = $(BASE_DIR)/misc
 SAMPLE_DIR= $(BASE_DIR)/sample
+prefix := /usr
 
 # CC = gcc
 CFLAGS = -c -O0 -Wall -ggdb -Wextra -D_XOPEN_SOURCE=500
