@@ -3,6 +3,7 @@ SRC_DIR = $(BASE_DIR)/src
 TEST_DIR = $(BASE_DIR)/test
 MISC_DIR = $(BASE_DIR)/misc
 SAMPLE_DIR= $(BASE_DIR)/sample
+prefix := /usr
 
 # CC = gcc
 CFLAGS = -c -O0 -Wall -ggdb -Wextra -D_XOPEN_SOURCE=500
@@ -38,3 +39,7 @@ curl-try-sending.o: $(SAMPLE_DIR)/curl-try-sending.c
 
 clean:
 	rm -f *.o journal-gateway-gelf json-gelf-encoding curl-try-sending
+install:
+	install -m 0755 journal-gateway-gelf $(prefix)/bin
+	install -m 0644 ./misc/journal-gateway-gelf.service $(prefix)/etc/systemd/system/
+	install -m 0644 ./misc/journal-gateway-gelf.conf $(prefix)/etc
