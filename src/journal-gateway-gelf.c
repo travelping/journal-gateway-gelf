@@ -378,7 +378,7 @@ static void *handler_routine () {
     curl = curl_easy_init();
     assert(curl);
 
-    curl_easy_setopt(curl, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_1_0);
+    curl_easy_setopt(curl, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_1_1);
     curl_easy_setopt(curl, CURLOPT_USERAGENT, "journal-gateway-gelf/1.0");
     curl_easy_setopt(curl, CURLOPT_URL, gateway_socket_address);
 
