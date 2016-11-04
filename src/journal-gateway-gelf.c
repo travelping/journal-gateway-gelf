@@ -40,7 +40,9 @@
 extern char *program_invocation_short_name;
 static bool active = true;
 void *frontend, *router_control;
-char *source_journal_directory=NULL, *control_socket_address=NULL, *gateway_socket_address = NULL, *filter;
+char *source_journal_directory=NULL;
+char *gateway_socket_address = NULL;
+char *filter;
 sd_journal *j = NULL;
 
 /* arguments for 'filtering' */
@@ -202,10 +204,23 @@ void adjust_journal(){
     sd_journal_close( j );
     sd_journal_open_directory(&j, source_journal_directory, 0);
     /* set inital position of the journal */
-    if ( (int) since_timestamp != -1)
+    if ( (int) since_timestamp != -1) {
         sd_journal_seek_realtime_usec( j, since_timestamp );
-    else
+    } else {
+        // seeking to tail needs 2 steps:
+        // 1) seek to tail
+        // 2) one step back, one step forward to to nudge sd_journal* into 
+        // the right direction. not doing this will result in
+        // sd_journal_next() picking some random cursor and a lot of logs
+        // would be send to the gateway. see also:
+        //   https://bugzilla.redhat.com/show_bug.cgi?id=979487
+        //   https://bugzilla.freedesktop.org/show_bug.cgi?id=64614
+        //   https://lists.freedesktop.org/archives/systemd-devel/2014-October/023923.html
         sd_journal_seek_tail( j );
+        sd_journal_previous( j );
+        sd_journal_next( j );
+
+    }
 }
 
 // returns allocated copy of value
@@ -401,7 +416,7 @@ static void *handler_routine () {
         do {
             rc = sd_journal_next(j);
             valid_entry = check_timestamps();
-        }while(!valid_entry && rc != 0);
+        } while (!valid_entry && rc != 0);
 
         /* try to send new entry if there is one */
         if( rc == 1 ){
